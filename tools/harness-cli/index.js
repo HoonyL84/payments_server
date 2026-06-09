@@ -16,8 +16,9 @@ function log(message = "") {
 }
 
 function fail(message, code = 1) {
-  process.stderr.write(`[FAIL] ${message}\n`);
-  process.exit(code);
+  const err = new Error(message);
+  err.code = code;
+  throw err;
 }
 
 function ensureDir(dir) {
@@ -234,14 +235,42 @@ async function commandCheck() {
     if (process.stdout.isTTY) {
       const readline = require("readline");
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      
       const question = (query) => new Promise((resolve) => rl.question(query, resolve));
+      
+      const questionMasked = (query) => new Promise((resolve) => {
+        let isMuted = false;
+        const oldWrite = process.stdout.write;
+        rl.question(query, (answer) => {
+          process.stdout.write = oldWrite;
+          isMuted = false;
+          resolve(answer);
+        });
+        isMuted = true;
+        process.stdout.write = function (chunk, encoding, callback) {
+          if (isMuted) {
+            // Mute typed keys by returning nothing or backspace, but let newline or query text pass
+            if (chunk === "\n" || chunk === "\r\n" || chunk === "\r") {
+              return oldWrite.call(process.stdout, chunk, encoding, callback);
+            }
+            if (chunk.includes(query)) {
+              return oldWrite.call(process.stdout, chunk, encoding, callback);
+            }
+            return true;
+          }
+          return oldWrite.call(process.stdout, chunk, encoding, callback);
+        };
+      });
       
       log("\n⚙️  [Harness Setup] .env.local 설정 도우미");
       const wantSetup = await question("API Key를 입력하시겠습니까? (y/n, 기본값: n): ");
       if (wantSetup.toLowerCase().startsWith("y")) {
         const providerChoice = await question("AI Provider를 선택하세요 (openai/anthropic/gemini): ");
         const provider = ["openai", "anthropic", "gemini"].includes(providerChoice.toLowerCase()) ? providerChoice.toLowerCase() : "openai";
-        const key = await question(`[${provider}] API Key를 입력하세요: `);
+        
+        log(`[${provider}] API Key를 입력하세요 (화면에는 표시되지 않습니다):`);
+        const key = await questionMasked("> ");
+        log(""); // Newline after muted input
         
         if (key && !isPlaceholder(key)) {
           let envContent = fs.readFileSync(path.join(ROOT, ".env.local"), "utf8");
@@ -482,6 +511,87 @@ function commandCompleteTask(args) {
   log("[Harness] Task complete.");
 }
 
+function findFilesInDir(dir, filter, list = []) {
+  if (!fs.existsSync(dir)) return list;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      findFilesInDir(filePath, filter, list);
+    } else if (filter.test(filePath)) {
+      list.push(filePath);
+    }
+  }
+  return list;
+}
+
+function commandScanDrift(args) {
+  const envTemplate = path.join(ROOT, ".env.template");
+  if (!fs.existsSync(envTemplate)) {
+    fail(".env.template not found. Cannot perform scan-drift.");
+  }
+
+  // Parse .env.template variables
+  const templateContent = fs.readFileSync(envTemplate, "utf8");
+  const templateVars = new Set();
+  for (const line of templateContent.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Z_0-9]+)=/);
+    if (match) {
+      templateVars.add(match[1]);
+    }
+  }
+
+  // Code variables scanner (searches process.env.VAR or System.getenv("VAR"))
+  const files = findFilesInDir(ROOT, /\.(js|ts|java)$/);
+  const codeVars = new Set();
+  
+  // Exclude system variables we do not trace
+  const systemIgnore = new Set([
+    "PATH", "PATHEXT", "PWD", "HOME", "SHELL", "USER", 
+    "LANG", "PORT", "NODE_ENV", "TEMP", "TMP"
+  ]);
+
+  for (const file of files) {
+    if (file.includes("node_modules") || file.includes(".worktrees")) continue;
+    let content = fs.readFileSync(file, "utf8");
+    
+    // Strip comments to prevent matching placeholders in instructions
+    content = content.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, "$1");
+
+    // JS/TS: process.env.VARIABLE
+    const jsRegex = /process\.env\.([A-Z_0-9]+)/g;
+    let match;
+    while ((match = jsRegex.exec(content)) !== null) {
+      const v = match[1];
+      if (!systemIgnore.has(v)) codeVars.add(v);
+    }
+
+    // Java: System.getenv("VARIABLE")
+    const javaRegex = /System\.getenv\(\s*"([A-Z_0-9]+)"\s*\)/g;
+    while ((match = javaRegex.exec(content)) !== null) {
+      const v = match[1];
+      if (!systemIgnore.has(v)) codeVars.add(v);
+    }
+  }
+
+  const missing = [];
+  for (const v of codeVars) {
+    if (!templateVars.has(v)) {
+      missing.push(v);
+    }
+  }
+
+  if (missing.length > 0) {
+    log(missing.join("\n"));
+    process.exit(1);
+  } else {
+    log("✅ 이상 없음");
+  }
+}
+
 function packageScripts() {
   if (!exists("package.json")) return {};
   return JSON.parse(readText("package.json")).scripts || {};
@@ -590,13 +700,13 @@ async function commandVerify(args) {
       break;
     }
 
-    // If we failed and self-healing is requested
+    // If we failed and self-diagnose is requested
     if (heal && attempt < maxHealAttempts) {
       attempt++;
       const mode = process.env.HARNESS_AGENT_MODE || "interactive";
       if (mode !== "api") {
         say(`\n======================================================`);
-        say(`🚨 [AGENT_COMMAND: SELF_HEAL_REQUIRED]`);
+        say(`🚨 [AGENT_COMMAND: SELF_DIAGNOSE_REQUIRED]`);
         say(`------------------------------------------------------`);
         say(`Verification step failed in interactive mode.`);
         say(`Step: ${failedStep.label}`);
@@ -607,17 +717,18 @@ async function commandVerify(args) {
         say(`------------------------------------------------------`);
         say(`👉 INSTRUCTION FOR ACTIVE AGENT:`);
         say(`1. Analyze the verification failure details above.`);
-        say(`2. Use codebase search / file write tools to fix the root cause.`);
-        say(`3. Once fixed, execute verification again using: npm run harness -- verify`);
+        say(`2. Diagnose the root cause and propose recovery guidance.`);
+        say(`3. Use codebase search / file write tools to fix the issue.`);
+        say(`4. Once fixed, execute verification again using: npm run harness -- verify`);
         say(`======================================================\n`);
         recordVerify("fail", failedStep.label);
         writeText(logRel, lines.join(os.EOL));
         process.exit(failedStep.status);
       }
 
-      say(`[Heal] Step "${failedStep.label}" failed. Initiating self-healing (Attempt ${attempt}/${maxHealAttempts})...`);
+      say(`[Diagnose] Step "${failedStep.label}" failed. Initiating self-diagnosis (Attempt ${attempt}/${maxHealAttempts})...`);
 
-      const healingPrompt = `The verification step "${failedStep.label}" failed during task execution.
+      const diagnosePrompt = `The verification step "${failedStep.label}" failed during task execution.
 Command executed: ${failedStep.command} ${failedStep.stepArgs.join(" ")}
 
 Stderr Output:
@@ -626,18 +737,19 @@ ${failedStep.stderr.slice(-2500)}
 Stdout Output:
 ${failedStep.stdout.slice(-1500)}
 
-Please review the error logs, identify the root cause, and apply surgical changes to the codebase to fix the linting, testing, or build failure.`;
+Please review the error logs, identify the root cause, and write a detailed recovery guide explaining which files to edit, what lines to change, and how to fix the issue.`;
 
       try {
-        await commandRunAgent(["--type", "fix", "--role", "implementer", healingPrompt]);
+        await commandRunAgent(["--type", "review", "--role", "reviewer", diagnosePrompt]);
+        say(`\nℹ️  [Diagnose] Recovery guide generated in agent log above. Please follow the instructions to resolve the error.`);
       } catch (err) {
-        say(`[Heal] Self-healing agent call failed: ${err.message}`);
+        say(`[Diagnose] Self-diagnosis agent call failed: ${err.message}`);
       }
     } else {
-      // Verification failed and no healing/exhausted attempts
+      // Verification failed and no diagnose/exhausted attempts
       recordVerify("fail", failedStep.label);
       writeText(logRel, lines.join(os.EOL));
-      await sendSlackNotification("fail", `❌ Verification step [${failedStep.label}] failed.\nCommand: ${failedStep.command} ${failedStep.stepArgs.join(" ")}\nSelf-healing attempts: ${attempt}/${maxHealAttempts}`);
+      await sendSlackNotification("fail", `❌ Verification step [${failedStep.label}] failed.\nCommand: ${failedStep.command} ${failedStep.stepArgs.join(" ")}\nSelf-diagnosis attempts: ${attempt}/${maxHealAttempts}`);
       process.exit(failedStep.status);
     }
   }
@@ -805,6 +917,7 @@ Usage:
   node tools/harness-cli/index.js verify [--offline]
   node tools/harness-cli/index.js run-agent [--type type] [--role role] "prompt"
   node tools/harness-cli/index.js complete-task <name> [--force]
+  node tools/harness-cli/index.js scan-drift
 `);
 }
 
@@ -830,6 +943,9 @@ async function main() {
     case "run-agent":
       await commandRunAgent(args);
       break;
+    case "scan-drift":
+      commandScanDrift(args);
+      break;
     case "help":
     case "--help":
     case "-h":
@@ -842,4 +958,7 @@ async function main() {
   }
 }
 
-main().catch((error) => fail(error.stack || error.message));
+main().catch((error) => {
+  process.stderr.write(`[FAIL] ${error.message}\n`);
+  process.exit(error.code || 1);
+});

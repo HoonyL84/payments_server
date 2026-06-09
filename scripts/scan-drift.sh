@@ -50,16 +50,11 @@ fi
 # ── 3. Config Drift: 코드에서 쓰는 환경 변수가 .env.template에 있는가? ──────────
 echo "▶ [3/4] Config Drift 검사..."
 if [ -f ".env.template" ]; then
-  # 코드에서 process.env 또는 System.getenv 패턴 수집 후, 시스템 예약어 및 무시할 변수 제외
-  CODE_VARS=$(grep -rh --include="*.java" --include="*.js" --include="*.ts" \
-    -oP '(?<=System\.getenv\(")[^"]+|(?<=process\.env\.)[A-Z_]+' . 2>/dev/null | \
-    grep -vE '^(PATH|PATHEXT|PWD|HOME|SHELL|USER|LANG|PORT|NODE_ENV)$' | sort -u)
-  TEMPLATE_VARS=$(grep -oP '^[A-Z_]+(?==)' .env.template 2>/dev/null | sort -u)
-  MISSING=$(comm -23 <(echo "$CODE_VARS") <(echo "$TEMPLATE_VARS") 2>/dev/null)
-  if [ -n "$MISSING" ]; then
+  # BSD/GNU grep 호환성 문제를 피하기 위해 Node CLI로 검사 위임
+  if ! MISSING=$(node tools/harness-cli/index.js scan-drift 2>&1); then
     DRIFT_FOUND=1
     REPORT="${REPORT}\n⚠️  [Config Drift] .env.template에 없는 환경 변수:\n${MISSING}\n"
-    echo "  ⚠️  누락된 env 변수 발견"
+    echo "  ⚠️  누락된 env 변수 발견: ${MISSING}"
   else
     echo "  ✅ 이상 없음"
   fi

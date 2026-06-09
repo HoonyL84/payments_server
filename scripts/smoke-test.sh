@@ -12,13 +12,19 @@ cd "$ROOT_DIR"
 
 TICKET_NAME="smoke-test-ticket"
 
+cleanup() {
+  echo "[Smoke Test] Cleaning up test files..."
+  rm -f ".harness/tasks/backlog/$TICKET_NAME.md"
+  rm -f ".harness/tasks/active/$TICKET_NAME.md"
+  rm -f ".harness/tasks/archive/$TICKET_NAME.md"
+  rm -f "observability/metrics/$TICKET_NAME.verify.json"
+  rm -f "observability/metrics/$TICKET_NAME.start.json"
+  rm -f "observability/metrics/$TICKET_NAME.done.json"
+}
+trap cleanup EXIT
+
 echo "[Smoke Test] Cleaning up old test files..."
-rm -f ".harness/tasks/backlog/$TICKET_NAME.md"
-rm -f ".harness/tasks/active/$TICKET_NAME.md"
-rm -f ".harness/tasks/archive/$TICKET_NAME.md"
-rm -f "observability/metrics/$TICKET_NAME.verify.json"
-rm -f "observability/metrics/$TICKET_NAME.start.json"
-rm -f "observability/metrics/$TICKET_NAME.done.json"
+cleanup
 
 echo "[Smoke Test] 1. Running check..."
 bash scripts/check-environment.sh
@@ -65,9 +71,5 @@ if [ ! -f "observability/metrics/$TICKET_NAME.done.json" ]; then
   echo "Error: Done metric JSON file was not created."
   exit 1
 fi
-
-echo "[Smoke Test] Cleaning up test files..."
-rm -f ".harness/tasks/archive/$TICKET_NAME.md"
-rm -f "observability/metrics/$TICKET_NAME.done.json"
 
 echo "[Smoke Test] Success! Complete harness flow works seamlessly."

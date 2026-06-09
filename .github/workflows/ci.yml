@@ -42,6 +42,8 @@ jobs:
         run: bash scripts/validate-memory.sh
       - name: Drift check
         run: bash scripts/scan-drift.sh
+      - name: CLI smoke test
+        run: bash scripts/smoke-test.sh
 
   # ──────────────────────────────────────────
   # Java / Gradle 프로젝트 감지 시 실행
