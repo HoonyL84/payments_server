@@ -5,6 +5,7 @@
 > [!NOTE]
 > Recommended text encoding for this repository is **UTF-8**.
 > If Korean text appears broken in terminal, switch terminal/codepage to UTF-8.
+> For Java source files on Windows, prefer **UTF-8 without BOM**. PowerShell 5 `Set-Content -Encoding UTF8` may create a BOM that `javac` rejects.
 
 # Harness Engineering Template
 
@@ -61,3 +62,4 @@ scratch/
 
 - 템플릿 저장소이므로 일부 파일(예: `docs/project/PLANS.md`, `tools/registry.yaml`)은 의도적으로 기본 골격만 제공합니다.
 - 표준 스킬 구조는 `skills/<skill_name>/`를 사용하며, `SKILL.md`는 YAML frontmatter의 `name`/`description`을 포함합니다.
+- 템플릿을 복제한 뒤 `package.json`의 이름/버전을 바꾸면 `npm install --package-lock-only --ignore-scripts`로 `package-lock.json` 메타데이터를 갱신하세요.

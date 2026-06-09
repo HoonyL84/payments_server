@@ -31,6 +31,6 @@
 <!-- AI 에이전트가 자신의 작업을 평가하고 기록합니다. -->
 - **Rework Count (재작업 횟수)**: 0회
 - **Confidence Score (구조적 안정성 확신도)**: 0/100
-- **Self-Correction Log**: 
+- **Self-Correction Log**:
   - *예: 최초 작성 시 Layered Architecture 위반(Domain -> Infrastructure 참조)이 AI 리뷰에서 지적되어 수정함.*
   - 없음
