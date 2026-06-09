@@ -33,6 +33,7 @@ scratch/
 │   ├── start-task.sh                ← 태스크 시작 (워크트리 생성)
 │   ├── verify-task.sh               ← 검증 (테스트+빌드)
 │   ├── complete-task.sh             ← 완료 및 GC
+│   ├── complete-task.ps1            ← Windows/PowerShell용 완료 및 GC
 │   ├── scan-drift.sh                ← Drift 자동 감지
 │   ├── run-agent.sh                 ← AI API 직접 호출
 │   └── utils.sh                     ← Slack 알림 공통 함수
@@ -103,6 +104,12 @@ git add -A
 git commit -m "feat(auth): JWT 기반 사용자 인증 구현"
 cd ../..
 bash scripts/complete-task.sh user-auth
+```
+
+Windows/PowerShell 환경에서 Bash 실행이 막혀 있다면 아래 대체 스크립트를 사용할 수 있습니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/complete-task.ps1 user-auth -Force
 ```
 
 ---
