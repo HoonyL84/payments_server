@@ -28,6 +28,7 @@
 - Claude/Gemini 진입점: [CLAUDE.md](CLAUDE.md), [GEMINI.md](GEMINI.md)
 - AI 문서 지도: [llms.txt](llms.txt)
 - 프로젝트 목표 문서: [docs/project/PLANS.md](docs/project/PLANS.md)
+- 에이전트 역할 정의: [docs/design-docs/agent-roles.md](docs/design-docs/agent-roles.md)
 - 메모리 운영 규칙: [docs/design-docs/memory-governance.md](docs/design-docs/memory-governance.md)
 
 ## 디렉터리 요약
@@ -49,6 +50,7 @@ scratch/
 - `scripts/start-task.sh`: 워크트리 + EXEC_PLAN 생성
 - `scripts/verify-task.sh`: 테스트/린트/빌드/정책 검증
 - `scripts/verify-task.sh --offline`: 네트워크/키 없는 환경용 로컬 검증
+- `scripts/run-agent.sh --role <role>`: Planner/Reviewer 등 역할 프롬프트로 AI 호출
 - `scripts/complete-task.sh`: 태스크 종료 및 기록 정리
 - `scripts/scan-drift.sh`: 운영 드리프트 점검
 - `scripts/health-check.sh`: 필수 구조/파일/최근 verify 상태 점검

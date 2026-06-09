@@ -37,6 +37,9 @@ scratch/
 │   ├── run-agent.sh                 ← AI API 직접 호출
 │   └── utils.sh                     ← Slack 알림 공통 함수
 │
+├── prompts/
+│   └── system/roles/                ← Planner/Reviewer 등 역할 프롬프트
+│
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                   ← PR 자동 테스트 (Java/Node 감지)
@@ -117,6 +120,10 @@ bash scripts/complete-task.sh user-auth
 # 일반 코드 생성 (저렴한 모델 자동 선택)
 bash scripts/run-agent.sh --type code "UserRepository CRUD 구현해줘"
 
+# 역할을 명시한 호출
+bash scripts/run-agent.sh --role planner "PLANS.md 기준으로 첫 태스크를 쪼개줘"
+bash scripts/run-agent.sh --role reviewer --type review "이번 diff를 리뷰해줘"
+
 # 아키텍처 설계 (강력한 모델 자동 선택)
 bash scripts/run-agent.sh --type architect "Redis + MySQL 하이브리드 캐싱 설계해줘"
 
@@ -139,6 +146,19 @@ bash scripts/run-agent.sh --type docs "API 문서 작성해줘"
 ```bash
 AI_PROVIDER=anthropic bash scripts/run-agent.sh --type architect "설계해줘"
 ```
+
+**역할 기반 실행:**
+
+| Role | 용도 |
+|------|------|
+| `planner` | 목표/범위/완료 기준 정리 |
+| `architect` | 설계/트레이드오프/승인 필요 결정 검토 |
+| `implementer` | 최소 범위 코드 구현 |
+| `reviewer` | 버그/회귀/테스트 누락 리뷰 |
+| `verifier` | 테스트/빌드/CI/보안 결과 확인 |
+| `recorder` | 작업 결과와 로그 정리 |
+| `memory` | memory 레이어 갱신 판단 |
+| `release` | 커밋/PR/완료 처리 |
 
 ---
 

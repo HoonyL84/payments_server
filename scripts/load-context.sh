@@ -85,6 +85,7 @@ print_file_block "Agent Rules" "AGENTS.md" 300
 print_file_block "Project Plan" "docs/project/PLANS.md" 250
 print_file_block "Core Beliefs" "docs/design-docs/core-beliefs.md" 250
 print_file_block "Tech Stack" "docs/design-docs/tech-stack.md" 200
+print_file_block "Agent Roles" "docs/design-docs/agent-roles.md" 220
 
 # Priority 2: active task plan (if provided / infer by name)
 if [ -n "$TASK_NAME" ]; then

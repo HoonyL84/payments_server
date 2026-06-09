@@ -12,6 +12,7 @@
 
 - [Core beliefs](docs/design-docs/core-beliefs.md): architecture principles and coding guardrails.
 - [Tech stack](docs/design-docs/tech-stack.md): default technology choices.
+- [Agent roles](docs/design-docs/agent-roles.md): role contracts for planner, architect, implementer, reviewer, verifier, recorder, memory, and release.
 - [Memory governance](docs/design-docs/memory-governance.md): memory layer update rules.
 
 ## Agent Capabilities
