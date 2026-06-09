@@ -650,7 +650,7 @@ async function commandVerify(args) {
     let failedStep = null;
     const runStep = (label, command, stepArgs) => {
       say(`[${label}] ${command} ${stepArgs.join(" ")}`);
-      // Run and capture outputs in case of failure for self-healing
+      // Run and capture outputs in case of failure for self-diagnosis
       const result = run(command, stepArgs, { capture: true });
       if (result.status !== 0) {
         failedStep = { label, command, stepArgs, status: result.status, stdout: result.stdout, stderr: result.stderr };
