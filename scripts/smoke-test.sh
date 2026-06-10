@@ -12,6 +12,12 @@ cd "$ROOT_DIR"
 
 TICKET_NAME="smoke-test-ticket"
 
+check_l5_checkpoint() {
+  echo "[Smoke Test] Checking interactive L5 checkpoint..."
+  HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy
+  HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy --verify-current
+}
+
 cleanup() {
   echo "[Smoke Test] Cleaning up test files..."
   rm -f ".harness/tasks/backlog/$TICKET_NAME.md"
@@ -36,6 +42,18 @@ cleanup
 echo "[Smoke Test] 1. Running check..."
 bash scripts/check-environment.sh
 
+PRE_EXISTING_ACTIVE_COUNT="$(
+  find ".harness/tasks/active" -maxdepth 1 -type f -name '*.md' \
+    ! -name '.gitkeep' ! -name "$TICKET_NAME.md" | wc -l | tr -d ' '
+)"
+if [ "$PRE_EXISTING_ACTIVE_COUNT" -gt 1 ]; then
+  echo "Error: Smoke test requires at most one pre-existing active ticket."
+  exit 1
+fi
+if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 1 ]; then
+  check_l5_checkpoint
+fi
+
 echo "[Smoke Test] 2. Creating ticket..."
 bash scripts/create-ticket.sh "$TICKET_NAME" "chore" \
   --goal "Verify cli quoting works" \
@@ -57,12 +75,12 @@ if [ ! -f ".harness/tasks/active/$TICKET_NAME.md" ]; then
   exit 1
 fi
 
-echo "[Smoke Test] 3-1. Checking interactive L5 checkpoint..."
-HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy
-HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy --verify-current
+if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 0 ]; then
+  check_l5_checkpoint
+fi
 
 echo "[Smoke Test] 4. Verifying task..."
-export TASK_ID="local"
+export TASK_ID="$TICKET_NAME"
 bash scripts/verify-task.sh --offline
 
 if [ ! -f "observability/metrics/$TICKET_NAME.verify.json" ]; then

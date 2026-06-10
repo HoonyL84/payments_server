@@ -9,6 +9,24 @@ Set-Location $root
 
 $TicketName = "smoke-test-ticket"
 
+function Test-L5Checkpoint {
+  Write-Host "[Smoke Test] Checking interactive L5 checkpoint..."
+  $previousLevel = $env:HARNESS_AUTONOMY_LEVEL
+  try {
+    $env:HARNESS_AUTONOMY_LEVEL = "5"
+    & node "tools/harness-cli/index.js" autonomy
+    if ($LASTEXITCODE -ne 0) {
+      throw "Error: Interactive L5 checkpoint failed."
+    }
+    & node "tools/harness-cli/index.js" autonomy --verify-current
+    if ($LASTEXITCODE -ne 0) {
+      throw "Error: Interactive L5 verification failed."
+    }
+  } finally {
+    $env:HARNESS_AUTONOMY_LEVEL = $previousLevel
+  }
+}
+
 function Cleanup-TestFiles {
   Write-Host "[Smoke Test] Cleaning up test files..."
   Remove-Item -Path ".harness/tasks/backlog/$TicketName.md" -ErrorAction SilentlyContinue
@@ -33,6 +51,17 @@ try {
   Write-Host "[Smoke Test] 1. Running check..."
   & .\scripts\check-environment.ps1
 
+  $preExistingActiveCount = @(
+    Get-ChildItem ".harness/tasks/active" -Filter "*.md" -File |
+      Where-Object { $_.Name -ne ".gitkeep" -and $_.BaseName -ne $TicketName }
+  ).Count
+  if ($preExistingActiveCount -gt 1) {
+    throw "Error: Smoke test requires at most one pre-existing active ticket."
+  }
+  if ($preExistingActiveCount -eq 1) {
+    Test-L5Checkpoint
+  }
+
   Write-Host "[Smoke Test] 2. Creating ticket..."
   & .\scripts\create-ticket.ps1 -TicketName $TicketName -Type "chore" `
     -Goal "Verify cli quoting works" `
@@ -52,21 +81,12 @@ try {
     throw "Error: Active ticket file was not created."
   }
 
-  Write-Host "[Smoke Test] 3-1. Checking interactive L5 checkpoint..."
-  $previousLevel = $env:HARNESS_AUTONOMY_LEVEL
-  $env:HARNESS_AUTONOMY_LEVEL = "5"
-  & node "tools/harness-cli/index.js" autonomy
-  if ($LASTEXITCODE -ne 0) {
-    throw "Error: Interactive L5 checkpoint failed."
+  if ($preExistingActiveCount -eq 0) {
+    Test-L5Checkpoint
   }
-  & node "tools/harness-cli/index.js" autonomy --verify-current
-  if ($LASTEXITCODE -ne 0) {
-    throw "Error: Interactive L5 verification failed."
-  }
-  $env:HARNESS_AUTONOMY_LEVEL = $previousLevel
 
   Write-Host "[Smoke Test] 4. Verifying task..."
-  $env:TASK_ID = "local"
+  $env:TASK_ID = $TicketName
   & .\scripts\verify-task.ps1 -Offline
 
   if (-not (Test-Path "observability/metrics/$TicketName.verify.json")) {
