@@ -1530,19 +1530,24 @@ async function commandVerify(args) {
       fail("No supported project type detected. Please verify manually.");
     }
 
-    if (success && worktreeBefore) {
+    if (worktreeBefore) {
       const worktreeAfter = worktreeSnapshot();
       if (worktreeAfter && worktreeAfter.fingerprint !== worktreeBefore.fingerprint) {
         const detail = describeWorktreeDrift(worktreeBefore, worktreeAfter);
-        failedStep = {
-          label: "Worktree guard",
-          command: "git",
-          stepArgs: ["status", "--short"],
-          status: 1,
-          stdout: "",
-          stderr: detail,
-        };
-        success = false;
+        if (success) {
+          failedStep = {
+            label: "Worktree guard",
+            command: "git",
+            stepArgs: ["status", "--short"],
+            status: 1,
+            stdout: "",
+            stderr: detail,
+          };
+          success = false;
+        } else {
+          say(`[Worktree guard] ${detail}`);
+          failedStep.stderr = `${failedStep.stderr.trim()}\n[Worktree guard] ${detail}`.trim();
+        }
       }
     }
 
