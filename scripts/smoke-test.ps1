@@ -189,6 +189,10 @@ new file mode 100644
   if ($LASTEXITCODE -ne 0) {
     throw "Error: API retry policy validation failed."
   }
+  & node "tools/harness-cli/index.js" validate-recovery
+  if ($LASTEXITCODE -ne 0) {
+    throw "Error: Recovery diagnostics policy validation failed."
+  }
   if (Select-String -Path "tools/harness-cli/index.js" -Pattern 'git reset --hard|git clean -fd' -Quiet) {
     throw "Error: Destructive Git recovery command was introduced."
   }

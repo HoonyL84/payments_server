@@ -106,3 +106,24 @@ HARNESS_MAX_PROVIDER_REQUESTS=12
 ```
 
 인증 오류, 잘못된 요청, quota 소진처럼 재시도로 해결되지 않는 응답은 즉시 중단한다.
+
+## 중단 후 복구 진단
+
+토큰 만료, 터미널 종료, 네트워크 단절, PC 재시작 뒤에는 먼저 읽기 전용 복구 진단을 실행한다.
+
+```bash
+npm run harness -- recover
+```
+
+`recover`는 active 티켓, autonomy 체크포인트, 현재 HEAD, 작업 트리, 마지막 verify 콘텐츠 지문을 대조한다.
+
+- `retry_agent`: 공급자 호출 전에 멈췄고 구현 변경이 없어 같은 티켓을 다시 시도할 수 있다.
+- `retry_patch`: 패치 적용 직전 체크포인트와 작업 트리가 같아 패치 적용을 다시 시도할 수 있다.
+- `inspect_partial_patch`: 패치 적용 도중 멈춘 흔적이 있어 diff를 먼저 확인해야 한다.
+- `inspect_and_verify`: 미검증 구현 변경이 남아 있으므로 보존한 채 검토하고 verify해야 한다.
+- `fix_and_reverify`: 마지막 verify 실패 원인을 확인해 수정하고 다시 검증해야 한다.
+- `reverify_required`: 마지막 verify 뒤 콘텐츠가 변경됐다.
+- `ready_to_complete`: 현재 콘텐츠가 마지막 verify 통과 지문과 일치한다.
+- `approval_required`, `manual_review`: 승인 또는 사람의 판단 없이는 진행하지 않는다.
+
+복구 진단은 `git reset --hard`, `git clean -fd`, 자동 파일 삭제를 수행하지 않는다.

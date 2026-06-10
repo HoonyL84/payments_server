@@ -1198,6 +1198,144 @@ function recoveryCheckpoint(ticket, patchRel) {
   };
 }
 
+function assessRecovery({ state, active, dirty, headSha, verify, contentFingerprint, patchExists }) {
+  if (active.length > 1) {
+    return { action: "manual_review", reason: `multiple active tickets: ${active.join(", ")}` };
+  }
+
+  const ticket = state.current_ticket || active[0] || null;
+  if (state.current_ticket && !active.includes(state.current_ticket)) {
+    return { action: "manual_review", ticket, reason: "checkpoint ticket is not active" };
+  }
+
+  const checkpoint = state.recovery_checkpoint;
+  if (checkpoint?.head_sha && checkpoint.head_sha !== headSha) {
+    return { action: "manual_review", ticket, reason: "HEAD changed after the recovery checkpoint" };
+  }
+
+  if (verify?.result === "pass") {
+    if (verify.content_fingerprint && verify.content_fingerprint === contentFingerprint) {
+      return {
+        action: "ready_to_complete",
+        ticket,
+        reason: "current repository content matches the last successful verification",
+      };
+    }
+    return {
+      action: "reverify_required",
+      ticket,
+      reason: "repository content changed after the last successful verification",
+    };
+  }
+  if (verify?.result === "fail") {
+    return {
+      action: "fix_and_reverify",
+      ticket,
+      reason: verify.last_fail_reason || "the last verification failed",
+    };
+  }
+
+  if (state.status === "approval_required") {
+    return { action: "approval_required", ticket, reason: "a high-risk patch is waiting for explicit approval" };
+  }
+
+  if (["apply_failed", "rollback_failed"].includes(state.status)) {
+    return { action: "manual_review", ticket, reason: `previous recovery-sensitive step ended as ${state.status}` };
+  }
+
+  if (state.status === "applying_patch" && checkpoint) {
+    const before = [...(checkpoint.working_tree || [])].sort();
+    const current = [...dirty].sort();
+    if (JSON.stringify(before) === JSON.stringify(current) && patchExists) {
+      return { action: "retry_patch", ticket, reason: "the checkpoint patch was not reflected in the worktree" };
+    }
+    return { action: "inspect_partial_patch", ticket, reason: "the worktree differs from the pre-apply checkpoint" };
+  }
+
+  const implementationDirty = dirty.filter((rel) => !normalizeRepoPath(rel).startsWith(".harness/tasks/"));
+  if (implementationDirty.length > 0) {
+    return {
+      action: "inspect_and_verify",
+      ticket,
+      reason: "unverified implementation changes are present after interruption",
+    };
+  }
+
+  if (state.status === "implementing") {
+    return { action: "retry_agent", ticket, reason: "the provider call ended before producing worktree changes" };
+  }
+  if (ticket) {
+    return { action: "resume_ticket", ticket, reason: "an active ticket is available without verified changes" };
+  }
+  return { action: "idle", ticket: null, reason: "no interrupted task was detected" };
+}
+
+function commandRecover() {
+  const state = readAutonomyState();
+  const active = listTaskNames("active");
+  const dirty = dirtyPaths();
+  if (dirty === null) fail("Recovery diagnostics require an executable git status command.");
+
+  const ticket = state.current_ticket || (active.length === 1 ? active[0] : "");
+  const verifyRel = ticket ? `observability/metrics/${ticket}.verify.json` : "";
+  const verify = verifyRel && exists(verifyRel) ? JSON.parse(readText(verifyRel)) : {};
+  const patchRel = state.pending_patch || state.recovery_checkpoint?.patch || "";
+  const assessment = assessRecovery({
+    state,
+    active,
+    dirty,
+    headSha: gitHeadSha(),
+    verify,
+    contentFingerprint: repositoryContentFingerprint(),
+    patchExists: Boolean(patchRel && exists(patchRel)),
+  });
+
+  log(JSON.stringify({
+    ...assessment,
+    state_status: state.status || "none",
+    active,
+    dirty_paths: dirty,
+    verify_result: verify.result || "none",
+    last_fail_reason: verify.last_fail_reason || null,
+    checkpoint: state.recovery_checkpoint || null,
+    destructive_recovery_used: false,
+  }, null, 2));
+}
+
+function commandValidateRecovery() {
+  const base = {
+    state: { status: "implementing", current_ticket: "demo" },
+    active: ["demo"],
+    dirty: [".harness/tasks/active/demo.md"],
+    headSha: "abc",
+    verify: {},
+    contentFingerprint: "current",
+    patchExists: false,
+  };
+  const cases = [
+    [base, "retry_agent"],
+    [{ ...base, dirty: [...base.dirty, "src/demo.js"] }, "inspect_and_verify"],
+    [{ ...base, verify: { result: "pass", content_fingerprint: "old" } }, "reverify_required"],
+    [{ ...base, verify: { result: "pass", content_fingerprint: "current" } }, "ready_to_complete"],
+    [{ ...base, verify: { result: "fail", last_fail_reason: "test failed" } }, "fix_and_reverify"],
+    [{
+      ...base,
+      state: {
+        status: "applying_patch",
+        current_ticket: "demo",
+        recovery_checkpoint: { head_sha: "abc", working_tree: base.dirty },
+      },
+      patchExists: true,
+    }, "retry_patch"],
+    [{ ...base, active: ["demo", "other"] }, "manual_review"],
+  ];
+  for (const [input, expected] of cases) {
+    const actual = assessRecovery(input).action;
+    if (actual !== expected) fail(`Recovery self-test expected ${expected} but received ${actual}.`);
+  }
+  log("Recovery diagnostics policy passed.");
+}
+
 async function commandAutonomy(args) {
   parseEnvFile();
   const { options } = parseArgs(args);
@@ -1944,11 +2082,13 @@ Usage:
   node tools/harness-cli/index.js run-agent [--type type] [--role role] "prompt"
   node tools/harness-cli/index.js complete-task <name> [--force]
   node tools/harness-cli/index.js scan-drift
+  node tools/harness-cli/index.js recover
   node tools/harness-cli/index.js autonomy [--status] [--verify-current] [--approve-risk] [--iterations N]
   node tools/harness-cli/index.js validate-auto-fix <patch-file>
   node tools/harness-cli/index.js validate-l5-patch <patch-file>
   node tools/harness-cli/index.js validate-prompts
   node tools/harness-cli/index.js validate-api-retry
+  node tools/harness-cli/index.js validate-recovery
 `);
 }
 
@@ -1977,6 +2117,9 @@ async function main() {
     case "scan-drift":
       commandScanDrift(args);
       break;
+    case "recover":
+      commandRecover();
+      break;
     case "autonomy":
       await commandAutonomy(args);
       break;
@@ -1991,6 +2134,9 @@ async function main() {
       break;
     case "validate-api-retry":
       await commandValidateApiRetry();
+      break;
+    case "validate-recovery":
+      commandValidateRecovery();
       break;
     case "help":
     case "--help":

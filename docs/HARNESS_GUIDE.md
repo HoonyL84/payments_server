@@ -245,6 +245,14 @@ migration 같은 고위험 변경은 자동 적용하지 않고 승인을 기다
 
 상세 정책: [`docs/design-docs/l5-autonomy-policy.md`](design-docs/l5-autonomy-policy.md)
 
+세션이나 API 호출이 중단됐다면 변경을 지우지 말고 먼저 복구 진단을 실행합니다.
+
+```bash
+npm run harness -- recover
+```
+
+현재 체크포인트, active 티켓, Git 변경, 마지막 verify 지문을 대조해 안전한 다음 행동을 JSON으로 출력합니다.
+
 ### Git Hooks (커밋 시 자동 실행)
 | Hook | 검사 항목 |
 |------|-----------|

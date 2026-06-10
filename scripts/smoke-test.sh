@@ -179,6 +179,7 @@ fi
 echo "[Smoke Test] 7. Validating L5 policy and opt-in gate..."
 node tools/harness-cli/index.js validate-prompts
 node tools/harness-cli/index.js validate-api-retry
+node tools/harness-cli/index.js validate-recovery
 if grep -Eq 'git reset --hard|git clean -fd' tools/harness-cli/index.js; then
   echo "Error: Destructive Git recovery command was introduced."
   exit 1
