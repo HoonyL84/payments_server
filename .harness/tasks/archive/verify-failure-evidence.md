@@ -17,13 +17,19 @@ fix
 - AI 기반 오류 분류
 
 ## Acceptance Criteria
-- [ ] 실패 verify 출력과 trace에 실제 AssertionError가 보인다
-- [ ] 실패 metrics의 last_fail_reason에 실제 오류가 포함된다
-- [ ] 성공 verify 후에도 이전 실패 원인과 rework_count가 유지된다
-- [ ] complete-task archive에 같은 재작업 증거가 기록된다
+- [x] 실패 verify 출력과 trace에 실제 AssertionError가 보인다
+- [x] 실패 metrics의 last_fail_reason에 실제 오류가 포함된다
+- [x] 성공 verify 후에도 이전 실패 원인과 rework_count가 유지된다
+- [x] complete-task archive에 같은 재작업 증거가 기록된다
 
 ## Risk
 - 낮음
 
 ## Notes
 - Created from harness CLI.
+
+## Completion
+- Completed At: 2026-06-10T06:09:46Z
+- Verify Result: pass
+- Rework Count: 0
+- Last Failure: none
