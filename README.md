@@ -41,6 +41,7 @@ npm run harness -- complete-task my-task --force
 - 에이전트 역할 정의: [docs/design-docs/agent-roles.md](docs/design-docs/agent-roles.md)
 - 실행 모드/OS 호환성: [docs/design-docs/execution-modes.md](docs/design-docs/execution-modes.md)
 - L4.5 자동 수정 정책: [docs/design-docs/auto-fix-policy.md](docs/design-docs/auto-fix-policy.md)
+- 선택형 L5 자율 실행 정책: [docs/design-docs/l5-autonomy-policy.md](docs/design-docs/l5-autonomy-policy.md)
 - 메모리 운영 규칙: [docs/design-docs/memory-governance.md](docs/design-docs/memory-governance.md)
 
 ## 디렉터리 요약
@@ -110,6 +111,32 @@ npm run harness -- verify --auto-fix
 스크립트, 인프라, migration, 비밀값은 수정하지 않으며 재검증 실패 시 패치를 원복합니다.
 커밋과 푸시는 자동으로 수행하지 않습니다. 상세 기준은
 [L4.5 자동 수정 정책](docs/design-docs/auto-fix-policy.md)을 참고하세요.
+
+## L5 Experimental
+
+L5는 기본 비활성화이며 사용자가 위험과 실행 환경 차이를 감수하고 명시적으로 켭니다.
+
+```env
+HARNESS_AUTONOMY_LEVEL=5
+HARNESS_MAX_ITERATIONS=3
+HARNESS_MAX_API_CALLS=6
+HARNESS_MAX_RUNTIME_MINUTES=30
+```
+
+```bash
+npm run harness -- autonomy
+npm run harness -- autonomy --status
+```
+
+- `interactive`: 현재 Codex/Cursor/Claude Code 세션이 체크포인트를 따라 연속 수행
+- `api`: provider API가 clean worktree에서 제한된 독립 실행 루프 수행
+- 고위험 패치: 적용 전 `approval_required`로 중단
+- 프롬프트: `prompts/templates/`에서 수정 가능
+- API 일시 오류: `Retry-After`와 지수 백오프로 제한 재시도
+- 복구: 하네스 패치만 역적용하며 자동 `reset --hard`/`clean -fd` 금지
+- 자동 커밋/푸시: 별도 opt-in이며 main/master 자동 커밋은 항상 차단
+
+상세 설정은 [L5 자율 실행 정책](docs/design-docs/l5-autonomy-policy.md)을 참고하세요.
 
 ## 참고
 

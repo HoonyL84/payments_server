@@ -223,6 +223,21 @@ npm run harness -- verify --auto-fix
 
 상세 정책: [`docs/design-docs/auto-fix-policy.md`](design-docs/auto-fix-policy.md)
 
+### L5 Experimental 자율 실행
+
+L5는 사용자가 명시적으로 `HARNESS_AUTONOMY_LEVEL=5`를 설정해야 실행됩니다.
+
+```bash
+npm run harness -- autonomy
+npm run harness -- autonomy --status
+```
+
+대화형 모드는 현재 AI 세션이 체크포인트를 따라 진행하고, API 모드는 clean worktree에서
+티켓 선택, 구현 패치, 검증, 제한적 연속 실행을 수행합니다. CI, 의존성, 인프라,
+migration 같은 고위험 변경은 자동 적용하지 않고 승인을 기다립니다.
+
+상세 정책: [`docs/design-docs/l5-autonomy-policy.md`](design-docs/l5-autonomy-policy.md)
+
 ### Git Hooks (커밋 시 자동 실행)
 | Hook | 검사 항목 |
 |------|-----------|

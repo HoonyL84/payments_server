@@ -23,6 +23,10 @@ cleanup() {
   rm -f ".harness/valid-auto-fix.patch"
   rm -f ".harness/blocked-auto-fix.patch"
   rm -f ".harness/new-file-auto-fix.patch"
+  rm -f ".harness/safe-l5.patch"
+  rm -f ".harness/risky-l5.patch"
+  rm -f ".harness/protected-l5.patch"
+  rm -f "observability/autonomy/state.json"
 }
 trap cleanup EXIT
 
@@ -52,6 +56,10 @@ if [ ! -f ".harness/tasks/active/$TICKET_NAME.md" ]; then
   echo "Error: Active ticket file was not created."
   exit 1
 fi
+
+echo "[Smoke Test] 3-1. Checking interactive L5 checkpoint..."
+HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy
+HARNESS_AUTONOMY_LEVEL=5 node tools/harness-cli/index.js autonomy --verify-current
 
 echo "[Smoke Test] 4. Verifying task..."
 export TASK_ID="$TICKET_NAME"
@@ -109,6 +117,51 @@ new file mode 100644
 EOF
 if node tools/harness-cli/index.js validate-auto-fix ".harness/new-file-auto-fix.patch"; then
   echo "Error: New file patch was not rejected."
+  exit 1
+fi
+
+echo "[Smoke Test] 7. Validating L5 policy and opt-in gate..."
+node tools/harness-cli/index.js validate-prompts
+node tools/harness-cli/index.js validate-api-retry
+if grep -Eq 'git reset --hard|git clean -fd' tools/harness-cli/index.js; then
+  echo "Error: Destructive Git recovery command was introduced."
+  exit 1
+fi
+cat > ".harness/safe-l5.patch" <<'EOF'
+diff --git a/src/new-feature.js b/src/new-feature.js
+new file mode 100644
+--- /dev/null
++++ b/src/new-feature.js
+@@ -0,0 +1 @@
++export const enabled = true;
+EOF
+node tools/harness-cli/index.js validate-l5-patch ".harness/safe-l5.patch"
+
+cat > ".harness/risky-l5.patch" <<'EOF'
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{}
++{"private":true}
+EOF
+node tools/harness-cli/index.js validate-l5-patch ".harness/risky-l5.patch"
+
+cat > ".harness/protected-l5.patch" <<'EOF'
+diff --git a/.env.local b/.env.local
+--- a/.env.local
++++ b/.env.local
+@@ -1 +1 @@
+-SECRET=old
++SECRET=new
+EOF
+if node tools/harness-cli/index.js validate-l5-patch ".harness/protected-l5.patch"; then
+  echo "Error: Protected secret patch was not rejected."
+  exit 1
+fi
+
+if HARNESS_AUTONOMY_LEVEL=4.5 node tools/harness-cli/index.js autonomy; then
+  echo "Error: L5 autonomy ran without explicit opt-in."
   exit 1
 fi
 

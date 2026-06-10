@@ -124,6 +124,17 @@ new file mode 100644
   }
 
   Write-Host "[Smoke Test] 7. Validating L5 policy and opt-in gate..."
+  & node "tools/harness-cli/index.js" validate-prompts
+  if ($LASTEXITCODE -ne 0) {
+    throw "Error: Prompt template validation failed."
+  }
+  & node "tools/harness-cli/index.js" validate-api-retry
+  if ($LASTEXITCODE -ne 0) {
+    throw "Error: API retry policy validation failed."
+  }
+  if (Select-String -Path "tools/harness-cli/index.js" -Pattern 'git reset --hard|git clean -fd' -Quiet) {
+    throw "Error: Destructive Git recovery command was introduced."
+  }
   @"
 diff --git a/src/new-feature.js b/src/new-feature.js
 new file mode 100644

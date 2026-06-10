@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const os = require("os");
 const { spawnSync } = require("child_process");
@@ -26,6 +27,18 @@ const AUTO_FIX_FORBIDDEN_FILES = new Set([
   "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
   "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
 ]);
+const AUTONOMY_STATE_REL = "observability/autonomy/state.json";
+const L5_PROTECTED_SEGMENTS = new Set([".git", ".harness", "observability", "node_modules", ".venv", "venv"]);
+const L5_HIGH_RISK_SEGMENTS = new Set([
+  ".github", "deploy", "deployment", "helm", "infra", "k8s", "kubernetes",
+  "migrations", "scripts", "terraform",
+]);
+const L5_HIGH_RISK_FILES = new Set([
+  ".env", ".env.local", "docker-compose.yml", "docker-compose.yaml", "dockerfile",
+  "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+  "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+]);
+let providerRequestCount = 0;
 
 function log(message = "") {
   process.stdout.write(`${message}\n`);
@@ -49,6 +62,15 @@ function readText(relPath, fallback = "") {
   const file = path.join(ROOT, relPath);
   if (!fs.existsSync(file)) return fallback;
   return fs.readFileSync(file, "utf8");
+}
+
+function renderPrompt(relPath, variables = {}) {
+  const template = readText(relPath);
+  if (!template) fail(`Prompt template is missing or empty: ${relPath}`);
+  return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key) => {
+    if (!(key in variables)) fail(`Prompt template variable is missing: ${key} in ${relPath}`);
+    return String(variables[key]);
+  });
 }
 
 function writeText(relPath, content) {
@@ -81,6 +103,100 @@ function extractUnifiedDiff(text) {
     fail("Auto-fix response did not contain a unified diff.");
   }
   return `${candidate.slice(diffIndex).trim()}\n`;
+}
+
+function extractJson(text) {
+  const fenced = text.match(/```(?:json)?\s*\n([\s\S]*?)```/i);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start === -1 || end <= start) fail("Agent response did not contain a JSON object.");
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch (err) {
+    fail(`Agent JSON response could not be parsed: ${err.message}`);
+  }
+}
+
+function listTaskNames(folder) {
+  const dir = path.join(ROOT, ".harness", "tasks", folder);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.endsWith(".md") && name !== ".gitkeep")
+    .sort()
+    .map((name) => name.replace(/\.md$/, ""));
+}
+
+function readAutonomyState() {
+  if (!exists(AUTONOMY_STATE_REL)) return {};
+  try {
+    return JSON.parse(readText(AUTONOMY_STATE_REL));
+  } catch (err) {
+    fail(`Autonomy state is invalid JSON: ${err.message}`);
+  }
+}
+
+function writeAutonomyState(patch) {
+  const previous = readAutonomyState();
+  const next = { ...previous, ...patch, updated_at: currentTimestamp() };
+  writeText(AUTONOMY_STATE_REL, JSON.stringify(next, null, 2));
+  return next;
+}
+
+function validateL5Patch(patch) {
+  patch = patch.replace(/^\uFEFF/, "");
+  const maxBytes = Number(process.env.HARNESS_L5_MAX_PATCH_KB || "500") * 1000;
+  const maxFiles = Number(process.env.HARNESS_L5_MAX_FILES || "20");
+  if (!Number.isFinite(maxBytes) || maxBytes < 1 || Buffer.byteLength(patch, "utf8") > maxBytes) {
+    fail(`L5 patch exceeds the ${maxBytes / 1000} KB limit.`);
+  }
+
+  const paths = [];
+  const headerRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
+  let match;
+  while ((match = headerRegex.exec(patch)) !== null) {
+    const before = normalizeRepoPath(match[1]);
+    const after = normalizeRepoPath(match[2]);
+    if (before !== after) fail(`L5 patch cannot rename files automatically: ${before} -> ${after}`);
+    paths.push(after);
+  }
+
+  const uniquePaths = [...new Set(paths)];
+  if (uniquePaths.length === 0) fail("L5 patch does not contain file changes.");
+  if (uniquePaths.length > maxFiles) fail(`L5 patch exceeds the ${maxFiles}-file limit.`);
+  const fileHeaderPaths = [];
+  const fileHeaderRegex = /^(?:---|\+\+\+) (?:[ab]\/(.+)|\/dev\/null)$/gm;
+  while ((match = fileHeaderRegex.exec(patch)) !== null) {
+    if (match[1]) fileHeaderPaths.push(normalizeRepoPath(match[1]));
+  }
+  if (fileHeaderPaths.some((filePath) => !uniquePaths.includes(filePath))) {
+    fail("L5 patch contains file headers not declared by diff --git.");
+  }
+  if (/^(?:rename|copy) (?:from|to) /m.test(patch)) fail("L5 patch cannot rename or copy files automatically.");
+  if (/^(?:GIT binary patch|Binary files )/m.test(patch)) fail("L5 patch cannot contain binary changes.");
+
+  const highRisk = classifyL5Paths(uniquePaths);
+  return { paths: uniquePaths, highRisk };
+}
+
+function classifyL5Paths(paths) {
+  const highRisk = [];
+  for (const filePath of paths) {
+    const normalized = path.posix.normalize(filePath);
+    const segments = normalized.split("/").map((segment) => segment.toLowerCase());
+    const fileName = segments[segments.length - 1];
+    const resolved = path.resolve(ROOT, normalized);
+    if (normalized.startsWith("../") || (!resolved.startsWith(`${ROOT}${path.sep}`) && resolved !== ROOT)) {
+      fail(`L5 patch escapes the repository: ${filePath}`);
+    }
+    if (segments.some((segment) => L5_PROTECTED_SEGMENTS.has(segment)) || fileName.startsWith(".env")) {
+      fail(`L5 patch targets a protected harness or secret path: ${filePath}`);
+    }
+    if (segments.some((segment) => L5_HIGH_RISK_SEGMENTS.has(segment)) || L5_HIGH_RISK_FILES.has(fileName)) {
+      highRisk.push(filePath);
+    }
+  }
+  return [...new Set(highRisk)];
 }
 
 function validateAutoFixPatch(patch) {
@@ -182,6 +298,7 @@ function run(command, args, options = {}) {
     stdio: options.capture ? "pipe" : "inherit",
     encoding: "utf8",
     shell: false,
+    env: options.env ? { ...process.env, ...options.env } : process.env,
   });
 
   if (options.capture) {
@@ -423,6 +540,28 @@ async function commandCheck() {
   if (["interactive", "api"].includes(mode)) pass(`HARNESS_AGENT_MODE=${mode}`);
   else bad("HARNESS_AGENT_MODE must be interactive or api");
 
+  const autonomyLevel = String(process.env.HARNESS_AUTONOMY_LEVEL || "4.5");
+  if (autonomyLevel === "4.5") pass("HARNESS_AUTONOMY_LEVEL=4.5 (safe default)");
+  else if (autonomyLevel === "5") warn("HARNESS_AUTONOMY_LEVEL=5 (Experimental opt-in)");
+  else bad("HARNESS_AUTONOMY_LEVEL must be 4.5 or 5");
+
+  const l5Defaults = {
+    HARNESS_MAX_ITERATIONS: "3",
+    HARNESS_MAX_API_CALLS: "6",
+    HARNESS_MAX_RUNTIME_MINUTES: "30",
+    HARNESS_L5_MAX_PATCH_KB: "500",
+    HARNESS_L5_MAX_FILES: "20",
+    HARNESS_API_MAX_RETRIES: "3",
+    HARNESS_API_RETRY_BASE_MS: "1000",
+    HARNESS_API_RETRY_MAX_MS: "30000",
+    HARNESS_MAX_PROVIDER_REQUESTS: "12",
+  };
+  for (const [key, fallback] of Object.entries(l5Defaults)) {
+    const value = Number(process.env[key] || fallback);
+    if (Number.isFinite(value) && value > 0) pass(`${key}=${value}`);
+    else bad(`${key} must be a positive number`);
+  }
+
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   for (const command of ["git", "node", npmCommand]) {
     if (commandExists(command)) pass(`Command available: ${command}`);
@@ -454,7 +593,11 @@ async function commandCheck() {
   const insideGit = exists(".git") || run("git", ["rev-parse", "--is-inside-work-tree"], { capture: true }).status === 0;
   if (insideGit) {
     pass("Git repository detected");
-    log(`[INFO] Current branch: ${getGitBranch()}`);
+    const currentBranch = getGitBranch();
+    log(`[INFO] Current branch: ${currentBranch}`);
+    if (autonomyLevel === "5" && process.env.HARNESS_AUTO_COMMIT === "true" && ["main", "master"].includes(currentBranch)) {
+      bad("L5 auto-commit cannot run on main/master");
+    }
     if (hasGitRemoteOrigin()) pass("Git remote origin configured");
     else warn("Git remote origin is not configured");
 
@@ -634,6 +777,31 @@ function commandCompleteTask(args) {
   log("[Harness] Task complete.");
 }
 
+function archiveVerifiedTicket(name) {
+  const verifyRel = `observability/metrics/${name}.verify.json`;
+  const startRel = `observability/metrics/${name}.start.json`;
+  const doneRel = `observability/metrics/${name}.done.json`;
+  const activeRel = `.harness/tasks/active/${name}.md`;
+  const archiveRel = `.harness/tasks/archive/${name}.md`;
+  const verify = exists(verifyRel) ? JSON.parse(readText(verifyRel)) : {};
+  const start = exists(startRel) ? JSON.parse(readText(startRel)) : {};
+  if (verify.result !== "pass") fail(`Cannot archive unverified L5 ticket: ${name}`);
+  if (exists(activeRel)) moveFile(activeRel, archiveRel);
+  writeText(doneRel, JSON.stringify({
+    task: name,
+    type: start.type || "unknown",
+    project: start.project || "unknown",
+    started_at: start.started_at || "unknown",
+    completed_at: currentTimestamp(),
+    rework_count: verify.rework_count || 0,
+    last_fail_reason: verify.last_fail_reason || "none",
+    verify_result: verify.result,
+    completed_by: "l5-autonomy",
+  }, null, 2));
+  removeIfExists(startRel);
+  removeIfExists(verifyRel);
+}
+
 function findFilesInDir(dir, filter, list = []) {
   if (!fs.existsSync(dir)) return list;
   const files = fs.readdirSync(dir);
@@ -733,6 +901,429 @@ function commandValidateAutoFix(args) {
   const patch = fs.readFileSync(patchPath, "utf8");
   const changedFiles = validateAutoFixPatch(patch);
   log(`Auto-fix patch policy passed: ${changedFiles.join(", ")}`);
+}
+
+function commandValidateL5Patch(args) {
+  const { positional } = parseArgs(args);
+  const [patchFile] = positional;
+  if (!patchFile) fail("Usage: node tools/harness-cli/index.js validate-l5-patch <patch-file>");
+  const patchPath = path.resolve(ROOT, patchFile);
+  if (!patchPath.startsWith(`${ROOT}${path.sep}`) || !fs.existsSync(patchPath)) {
+    fail(`Patch file not found inside repository: ${patchFile}`);
+  }
+  const result = validateL5Patch(fs.readFileSync(patchPath, "utf8"));
+  log(`L5 patch policy passed: ${result.paths.join(", ")}`);
+  if (result.highRisk.length > 0) log(`Approval required: ${result.highRisk.join(", ")}`);
+}
+
+function commandValidatePrompts() {
+  renderPrompt("prompts/templates/agent-system.md", {
+    CONTEXT: "context",
+    ROLE: "implementer",
+    ROLE_PROMPT: "role prompt",
+    TYPE: "code",
+  });
+  renderPrompt("prompts/templates/l5-planner.md");
+  renderPrompt("prompts/templates/l5-implementer.md", { TICKET: "example-ticket" });
+  log("Prompt templates passed.");
+}
+
+async function commandValidateApiRetry() {
+  const previous = {
+    maxRetries: process.env.HARNESS_API_MAX_RETRIES,
+    baseDelay: process.env.HARNESS_API_RETRY_BASE_MS,
+    maxDelay: process.env.HARNESS_API_RETRY_MAX_MS,
+    maxRequests: process.env.HARNESS_MAX_PROVIDER_REQUESTS,
+    requestCount: providerRequestCount,
+  };
+  process.env.HARNESS_API_MAX_RETRIES = "2";
+  process.env.HARNESS_API_RETRY_BASE_MS = "1";
+  process.env.HARNESS_API_RETRY_MAX_MS = "5";
+  process.env.HARNESS_MAX_PROVIDER_REQUESTS = "10";
+  providerRequestCount = 0;
+
+  let retryRequests = 0;
+  let quotaRequests = 0;
+  const server = http.createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/retry") {
+      retryRequests += 1;
+      if (retryRequests === 1) {
+        res.statusCode = 503;
+        res.setHeader("Retry-After", "0");
+        res.end(JSON.stringify({ error: { code: "temporary_unavailable" } }));
+      } else {
+        res.statusCode = 200;
+        res.end(JSON.stringify({ ok: true }));
+      }
+      return;
+    }
+    quotaRequests += 1;
+    res.statusCode = 429;
+    res.end(JSON.stringify({ error: { code: "insufficient_quota" } }));
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const { port } = server.address();
+    const retried = await postJson(`http://127.0.0.1:${port}/retry`, {}, { test: true });
+    if (!retried.ok || retryRequests !== 2) fail("API retry self-test did not retry exactly once.");
+    let quotaFailed = false;
+    try {
+      await postJson(`http://127.0.0.1:${port}/quota`, {}, { test: true });
+    } catch (err) {
+      quotaFailed = err.message.includes("insufficient_quota");
+    }
+    if (!quotaFailed || quotaRequests !== 1) fail("API quota self-test retried a non-retryable quota error.");
+    log("API retry policy passed.");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    const restore = (key, value) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    };
+    restore("HARNESS_API_MAX_RETRIES", previous.maxRetries);
+    restore("HARNESS_API_RETRY_BASE_MS", previous.baseDelay);
+    restore("HARNESS_API_RETRY_MAX_MS", previous.maxDelay);
+    restore("HARNESS_MAX_PROVIDER_REQUESTS", previous.maxRequests);
+    providerRequestCount = previous.requestCount;
+  }
+}
+
+function createPlannedTickets(plan) {
+  if (!Array.isArray(plan.tasks) || plan.tasks.length === 0) {
+    fail("Planner did not return any tasks.");
+  }
+  const created = [];
+  for (const task of plan.tasks.slice(0, 20)) {
+    const name = String(task.name || "").trim();
+    const type = String(task.type || "feat").trim();
+    const goal = String(task.description || task.goal || "").trim();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) || !VALID_TYPES.has(type) || !goal) {
+      fail(`Planner returned an invalid ticket: ${JSON.stringify(task)}`);
+    }
+    if (exists(`.harness/tasks/backlog/${name}.md`) || exists(`.harness/tasks/active/${name}.md`) || exists(`.harness/tasks/archive/${name}.md`)) {
+      continue;
+    }
+    commandCreateTicket([
+      name,
+      type,
+      "--goal", goal,
+      "--scope", `L5 planner가 분해한 '${plan.feature || "project goal"}' 하위 태스크`,
+      "--out-of-scope", "현재 티켓 목표 밖의 독립 기능",
+      "--acceptance", "티켓 목표가 구현되고 harness verify가 통과한다",
+      "--risk", task.risk || "낮음",
+    ]);
+    created.push(name);
+  }
+  return created;
+}
+
+function ensureCurrentTicket() {
+  const active = listTaskNames("active");
+  if (active.length > 1) fail(`L5 requires one active ticket, found: ${active.join(", ")}`);
+  if (active.length === 1) return active[0];
+  const backlog = listTaskNames("backlog");
+  if (backlog.length === 0) return "";
+  commandStartTicket([backlog[0]]);
+  return backlog[0];
+}
+
+function verifyCurrentTicket(ticket, autoFix) {
+  const nodeArgs = [path.join("tools", "harness-cli", "index.js"), "verify"];
+  if (autoFix) nodeArgs.push("--auto-fix");
+  return run(process.execPath, nodeArgs, {
+    capture: true,
+    env: { TASK_ID: ticket, HARNESS_OFFLINE: "false" },
+  });
+}
+
+async function verifyCurrentTicketInProcess(ticket, autoFix) {
+  const previousTaskId = process.env.TASK_ID;
+  const previousOffline = process.env.HARNESS_OFFLINE;
+  process.env.TASK_ID = ticket;
+  process.env.HARNESS_OFFLINE = "false";
+  try {
+    await commandVerify(autoFix ? ["--auto-fix"] : []);
+  } finally {
+    if (previousTaskId === undefined) delete process.env.TASK_ID;
+    else process.env.TASK_ID = previousTaskId;
+    if (previousOffline === undefined) delete process.env.HARNESS_OFFLINE;
+    else process.env.HARNESS_OFFLINE = previousOffline;
+  }
+}
+
+function dirtyPaths() {
+  const result = run("git", ["status", "--porcelain"], { capture: true });
+  if (result.status !== 0 || result.error) return null;
+  return result.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3).trim());
+}
+
+function gitHeadSha() {
+  const result = run("git", ["rev-parse", "HEAD"], { capture: true });
+  return result.status === 0 ? result.stdout.trim() : "unknown";
+}
+
+function recoveryCheckpoint(ticket, patchRel) {
+  return {
+    ticket,
+    patch: patchRel,
+    head_sha: gitHeadSha(),
+    working_tree: dirtyPaths() || [],
+    created_at: currentTimestamp(),
+  };
+}
+
+async function commandAutonomy(args) {
+  parseEnvFile();
+  const { options } = parseArgs(args);
+  const level = String(process.env.HARNESS_AUTONOMY_LEVEL || "4.5");
+  const mode = process.env.HARNESS_AGENT_MODE || "interactive";
+  const state = readAutonomyState();
+
+  if (options.status) {
+    log(JSON.stringify({
+      level,
+      mode,
+      active: listTaskNames("active"),
+      backlog: listTaskNames("backlog"),
+      state,
+    }, null, 2));
+    return;
+  }
+  if (level !== "5") {
+    fail("L5 is disabled. Set HARNESS_AUTONOMY_LEVEL=5 explicitly.");
+  }
+
+  const maxIterations = Number(options.iterations || process.env.HARNESS_MAX_ITERATIONS || "3");
+  const maxApiCalls = Number(process.env.HARNESS_MAX_API_CALLS || "6");
+  const maxMinutes = Number(process.env.HARNESS_MAX_RUNTIME_MINUTES || "30");
+  if (![maxIterations, maxApiCalls, maxMinutes].every((value) => Number.isFinite(value) && value > 0)) {
+    fail("L5 limits must be positive numbers.");
+  }
+
+  if (options["verify-current"]) {
+    const ticket = state.current_ticket || listTaskNames("active")[0];
+    if (!ticket) fail("No active L5 ticket to verify.");
+    if (mode === "interactive") {
+      await verifyCurrentTicketInProcess(ticket, true);
+    } else {
+      const result = verifyCurrentTicket(ticket, true);
+      process.stdout.write(result.stdout);
+      process.stderr.write(result.stderr);
+      if (result.status !== 0) {
+        const detail = result.error ? `: ${result.error.message}` : "";
+        fail(`Verification failed for ${ticket}${detail}`, result.status);
+      }
+    }
+    writeAutonomyState({ status: "verified", current_ticket: ticket, next_action: "review_and_complete" });
+    return;
+  }
+
+  if (mode === "interactive") {
+    const ticket = ensureCurrentTicket();
+    const next = ticket ? "implement_and_verify" : "decompose_plan";
+    writeAutonomyState({
+      level: 5,
+      mode,
+      status: "awaiting_interactive_agent",
+      current_ticket: ticket || null,
+      next_action: next,
+    });
+    log("[L5 Experimental] Interactive session checkpoint");
+    if (ticket) {
+      log(`Current ticket: .harness/tasks/active/${ticket}.md`);
+      log("Active agent instructions:");
+      log("1. Read the active ticket and linked design documents.");
+      log("2. Implement the ticket with surgical changes.");
+      log(`3. Run: npm run harness -- autonomy --verify-current`);
+      log("4. Review and commit the verified diff, then complete the task.");
+      log("5. Run autonomy again to continue with the next backlog ticket.");
+    } else {
+      log("No ticket is available. The active conversational agent must decompose docs/project/PLANS.md into backlog tickets, then run autonomy again.");
+    }
+    return;
+  }
+
+  if (mode !== "api") fail(`Unsupported HARNESS_AGENT_MODE for L5: ${mode}`);
+
+  const initialDirty = dirtyPaths();
+  if (initialDirty === null) fail("L5 API mode requires an executable git status command.");
+  if (initialDirty.length > 0) {
+    fail(`L5 API mode requires a clean worktree. Commit or stash first: ${initialDirty.slice(0, 10).join(", ")}`);
+  }
+  if (process.env.HARNESS_AUTO_COMMIT === "true") {
+    const branch = getGitBranch();
+    if (branch === "main" || branch === "master") {
+      fail("L5 auto-commit is blocked on main/master. Switch to a task branch first.");
+    }
+  }
+
+  const startedAt = Date.now();
+  let apiCalls = 0;
+  let completed = 0;
+  let ticket = ensureCurrentTicket();
+
+  if (!ticket) {
+    if (apiCalls >= maxApiCalls) fail("L5 API call budget exhausted before planning.");
+    const planText = await commandRunAgent([
+      "--type", "architect", "--role", "planner",
+      renderPrompt("prompts/templates/l5-planner.md"),
+    ]);
+    apiCalls += 1;
+    const created = createPlannedTickets(extractJson(planText));
+    if (created.length === 0) fail("L5 planner created no new tickets.");
+    ticket = ensureCurrentTicket();
+  }
+
+  while (ticket && completed < maxIterations && apiCalls < maxApiCalls) {
+    if ((Date.now() - startedAt) / 60_000 >= maxMinutes) {
+      writeAutonomyState({ status: "budget_exhausted", current_ticket: ticket, reason: "runtime" });
+      break;
+    }
+
+    process.env.TASK_ID = ticket;
+    writeAutonomyState({
+      level: 5,
+      mode,
+      status: "implementing",
+      current_ticket: ticket,
+      iteration: completed + 1,
+      api_calls: apiCalls,
+    });
+
+    let patchRel = "";
+    let patch = "";
+    let patchInfo;
+    const pendingApproval = state.status === "approval_required" && state.current_ticket === ticket && state.pending_patch;
+    if (pendingApproval && options["approve-risk"]) {
+      patchRel = state.pending_patch;
+      patch = readText(patchRel);
+      patchInfo = validateL5Patch(patch);
+    } else {
+      const response = await commandRunAgent([
+        "--type", "code", "--role", "implementer",
+        renderPrompt("prompts/templates/l5-implementer.md", { TICKET: ticket }),
+      ]);
+      apiCalls += 1;
+      patch = extractUnifiedDiff(response);
+      patchInfo = validateL5Patch(patch);
+      patchRel = `observability/traces/${fileTimestamp()}-${ticket}-l5.patch`;
+      writeText(patchRel, patch);
+    }
+
+    if (patchInfo.highRisk.length > 0 && !options["approve-risk"]) {
+      writeAutonomyState({
+        status: "approval_required",
+        current_ticket: ticket,
+        pending_patch: patchRel,
+        high_risk_files: patchInfo.highRisk,
+        next_action: "review patch and rerun autonomy --approve-risk",
+      });
+      log(`[L5 Experimental] Approval required: ${patchInfo.highRisk.join(", ")}`);
+      return;
+    }
+
+    const checkpoint = recoveryCheckpoint(ticket, patchRel);
+    writeAutonomyState({ status: "applying_patch", current_ticket: ticket, recovery_checkpoint: checkpoint });
+    try {
+      applyGitPatch(patchRel);
+    } catch (err) {
+      writeAutonomyState({
+        status: "apply_failed",
+        current_ticket: ticket,
+        recovery_checkpoint: checkpoint,
+        working_tree_after_failure: dirtyPaths(),
+        recovery_instruction: `Inspect git status and patch; retry with: git apply --check "${patchRel}"`,
+      });
+      throw err;
+    }
+    const verify = verifyCurrentTicket(ticket, false);
+    process.stdout.write(verify.stdout);
+    process.stderr.write(verify.stderr);
+    if (verify.status !== 0) {
+      try {
+        applyGitPatch(patchRel, true);
+        writeAutonomyState({
+          status: "failed_rolled_back",
+          current_ticket: ticket,
+          pending_patch: patchRel,
+          recovery_checkpoint: checkpoint,
+        });
+      } catch (rollbackError) {
+        writeAutonomyState({
+          status: "rollback_failed",
+          current_ticket: ticket,
+          pending_patch: patchRel,
+          recovery_checkpoint: checkpoint,
+          working_tree_after_failure: dirtyPaths(),
+          recovery_instruction: `Do not reset or clean automatically. Inspect changes, then try: git apply --check -R "${patchRel}"`,
+        });
+        fail(`L5 verification failed and non-destructive rollback also failed: ${rollbackError.message}`, verify.status);
+      }
+      fail(`L5 verification failed and the patch was rolled back: ${ticket}`, verify.status);
+    }
+
+    if (process.env.HARNESS_AUTO_COMMIT !== "true") {
+      writeAutonomyState({
+        status: "awaiting_review",
+        current_ticket: ticket,
+        verified_patch: patchRel,
+        changed_files: patchInfo.paths,
+        next_action: "review and commit, then complete the task",
+      });
+      log(`[L5 Experimental] ${ticket} passed verification. Auto-commit is disabled, so execution paused for review.`);
+      return;
+    }
+
+    const branch = getGitBranch();
+    const currentPaths = dirtyPaths();
+    if (currentPaths === null || currentPaths.length === 0) {
+      fail("L5 verification passed but no working-tree changes were found to commit.");
+    }
+    const implementationPaths = currentPaths.filter((filePath) => !filePath.replace(/\\/g, "/").startsWith(".harness/tasks/"));
+    const verifiedHighRisk = classifyL5Paths(implementationPaths);
+    if (verifiedHighRisk.length > 0 && !options["approve-risk"]) {
+      writeAutonomyState({
+        status: "approval_required",
+        current_ticket: ticket,
+        pending_patch: patchRel,
+        high_risk_files: verifiedHighRisk,
+        next_action: "review verified changes and rerun autonomy --approve-risk",
+      });
+      return;
+    }
+    archiveVerifiedTicket(ticket);
+    const verifiedPaths = dirtyPaths();
+    if (verifiedPaths === null || verifiedPaths.length === 0) {
+      fail("L5 could not find implementation and ticket metadata changes to commit.");
+    }
+    const addResult = run("git", ["add", "--", ...verifiedPaths], { capture: true });
+    if (addResult.status !== 0) fail(`L5 could not stage files: ${addResult.stderr || addResult.stdout}`);
+    const commitResult = run("git", ["commit", "-m", `feat(l5): ${ticket} 자율 작업 완료`], { capture: true });
+    if (commitResult.status !== 0) fail(`L5 commit failed: ${commitResult.stderr || commitResult.stdout}`);
+    if (process.env.HARNESS_AUTO_PUSH === "true") {
+      const pushResult = run("git", ["push", "-u", "origin", branch], { capture: true });
+      if (pushResult.status !== 0) fail(`L5 push failed: ${pushResult.stderr || pushResult.stdout}`);
+    }
+
+    completed += 1;
+    writeAutonomyState({ status: "ticket_completed", current_ticket: ticket, completed_iterations: completed, api_calls: apiCalls });
+    ticket = ensureCurrentTicket();
+  }
+
+  writeAutonomyState({
+    status: ticket ? "budget_exhausted" : "goal_queue_complete",
+    current_ticket: ticket || null,
+    completed_iterations: completed,
+    api_calls: apiCalls,
+  });
+  log(ticket
+    ? `[L5 Experimental] Paused at configured budget. Next ticket: ${ticket}`
+    : "[L5 Experimental] Backlog queue completed.");
 }
 
 function packageScripts() {
@@ -1002,6 +1593,7 @@ function buildContextBundle(type, taskName) {
     ["Agent Roles", "docs/design-docs/agent-roles.md", 220],
     ["Execution Modes", "docs/design-docs/execution-modes.md", 220],
     ["Auto-fix Policy", "docs/design-docs/auto-fix-policy.md", 220],
+    ["L5 Autonomy Policy", "docs/design-docs/l5-autonomy-policy.md", 260],
   ];
   const out = [`# Harness Context Bundle`, `GeneratedAt: ${currentTimestamp()}`, `TaskType: ${type}`, `TaskName: ${taskName || "unknown"}`, ""];
   for (const [title, rel, maxLines] of blocks) {
@@ -1015,14 +1607,64 @@ function buildContextBundle(type, taskName) {
 
 async function postJson(url, headers, body) {
   if (typeof fetch !== "function") fail("Node fetch is unavailable. Use Node.js 18+.");
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok) fail(`API request failed (${response.status}): ${JSON.stringify(json)}`);
-  return json;
+  const maxRetries = Number(process.env.HARNESS_API_MAX_RETRIES || "3");
+  const baseDelayMs = Number(process.env.HARNESS_API_RETRY_BASE_MS || "1000");
+  const maxDelayMs = Number(process.env.HARNESS_API_RETRY_MAX_MS || "30000");
+  const maxProviderRequests = Number(process.env.HARNESS_MAX_PROVIDER_REQUESTS || "12");
+  if (![maxRetries, baseDelayMs, maxDelayMs].every((value) => Number.isFinite(value) && value >= 0)
+      || !Number.isFinite(maxProviderRequests) || maxProviderRequests < 1) {
+    fail("API retry settings must be non-negative, and HARNESS_MAX_PROVIDER_REQUESTS must be at least 1.");
+  }
+
+  const retryableStatus = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      if (providerRequestCount >= maxProviderRequests) {
+        const budgetError = new Error(`Provider request budget exhausted: ${providerRequestCount}/${maxProviderRequests}`);
+        budgetError.code = 1;
+        budgetError.noRetry = true;
+        throw budgetError;
+      }
+      providerRequestCount += 1;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (response.ok) return json;
+
+      const details = JSON.stringify(json);
+      const providerCode = String(json.error?.code || json.error?.type || "").toLowerCase();
+      const quotaExhausted = ["insufficient_quota", "billing_hard_limit_reached", "credit_balance_too_low"]
+        .some((code) => providerCode.includes(code));
+      if (quotaExhausted || !retryableStatus.has(response.status) || attempt === maxRetries) {
+        const apiError = new Error(`API request failed (${response.status}): ${details}`);
+        apiError.code = 1;
+        apiError.noRetry = true;
+        throw apiError;
+      }
+
+      const retryAfter = response.headers.get("retry-after");
+      let delayMs = Math.min(maxDelayMs, baseDelayMs * (2 ** attempt));
+      if (retryAfter) {
+        const seconds = Number(retryAfter);
+        const dateDelay = Date.parse(retryAfter) - Date.now();
+        const requestedDelay = Number.isFinite(seconds) ? seconds * 1000 : dateDelay;
+        if (Number.isFinite(requestedDelay) && requestedDelay >= 0) {
+          delayMs = Math.min(maxDelayMs, requestedDelay);
+        }
+      }
+      log(`[API] Retryable HTTP ${response.status}. Retrying in ${delayMs}ms (${attempt + 1}/${maxRetries}).`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    } catch (err) {
+      if (err.noRetry || attempt === maxRetries) throw err;
+      const delayMs = Math.min(maxDelayMs, baseDelayMs * (2 ** attempt));
+      log(`[API] Network error: ${err.message}. Retrying in ${delayMs}ms (${attempt + 1}/${maxRetries}).`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  fail("API request exhausted retry attempts.");
 }
 
 async function commandRunAgent(args) {
@@ -1044,20 +1686,12 @@ async function commandRunAgent(args) {
   const taskName = process.env.TASK_ID || getGitBranch().split("/").pop();
   const rolePrompt = readText(`prompts/system/roles/${role}.md`);
   const context = buildContextBundle(type, taskName);
-  const systemPrompt = `당신은 하네스(Harness Engineering) 원칙을 따르는 시니어 소프트웨어 엔지니어입니다.
-아래 규칙과 프로젝트 컨텍스트를 읽고 주어진 태스크를 수행하세요.
-
-${context}
-
-=== Agent Role (${role}) ===
-${rolePrompt}
-
-현재 태스크 유형: ${type}
-현재 에이전트 역할: ${role}
-규칙:
-1. 코드 작성 시 AGENTS.md의 코딩 규칙을 엄격히 따르세요.
-2. 불확실한 부분은 추측하지 말고 가정(Assumption)을 명시하세요.
-3. 구현 완료 후 검증 방법을 함께 제시하세요.`;
+  const systemPrompt = renderPrompt("prompts/templates/agent-system.md", {
+    CONTEXT: context,
+    ROLE: role,
+    ROLE_PROMPT: rolePrompt,
+    TYPE: type,
+  });
 
   ensureDir("observability/traces");
   const logRel = `observability/traces/${fileTimestamp()}-${type}.log`;
@@ -1132,7 +1766,11 @@ Usage:
   node tools/harness-cli/index.js run-agent [--type type] [--role role] "prompt"
   node tools/harness-cli/index.js complete-task <name> [--force]
   node tools/harness-cli/index.js scan-drift
+  node tools/harness-cli/index.js autonomy [--status] [--verify-current] [--approve-risk] [--iterations N]
   node tools/harness-cli/index.js validate-auto-fix <patch-file>
+  node tools/harness-cli/index.js validate-l5-patch <patch-file>
+  node tools/harness-cli/index.js validate-prompts
+  node tools/harness-cli/index.js validate-api-retry
 `);
 }
 
@@ -1161,8 +1799,20 @@ async function main() {
     case "scan-drift":
       commandScanDrift(args);
       break;
+    case "autonomy":
+      await commandAutonomy(args);
+      break;
     case "validate-auto-fix":
       commandValidateAutoFix(args);
+      break;
+    case "validate-l5-patch":
+      commandValidateL5Patch(args);
+      break;
+    case "validate-prompts":
+      commandValidatePrompts();
+      break;
+    case "validate-api-retry":
+      await commandValidateApiRetry();
       break;
     case "help":
     case "--help":

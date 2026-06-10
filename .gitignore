@@ -36,4 +36,4 @@ observability/traces/*
 !observability/traces/.gitkeep
 observability/metrics/*.json
 !observability/metrics/.gitkeep
-
+observability/autonomy/*.json

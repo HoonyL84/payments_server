@@ -56,4 +56,5 @@ npm.cmd run harness -- verify --auto-fix
 ## 레벨 경계
 
 이 기능은 L4의 진단·검증 자동화에 제한적 복구 루프를 추가한 L4.5다.
-고위험 변경 승인, 장기 목표 재계획, 다중 에이전트 조정, 운영 배포와 장애 복구를 스스로 수행하지 않으므로 L5로 간주하지 않는다.
+단독 `verify --auto-fix`는 L5가 아니다. 선택형 L5 오케스트레이션은
+`docs/design-docs/l5-autonomy-policy.md`의 별도 한도와 승인 경계를 따른다.
