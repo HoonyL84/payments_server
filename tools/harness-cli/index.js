@@ -127,14 +127,28 @@ function listTaskNames(folder) {
     .map((name) => name.replace(/\.md$/, ""));
 }
 
-function resolveTaskId() {
+function resolveTaskId({ strict = false } = {}) {
   const configured = String(process.env.TASK_ID || "").trim();
   if (configured && configured !== "local") return configured;
   const active = listTaskNames("active");
   if (active.length === 1) return active[0];
   const branchTask = getGitBranch().split("/").pop();
   if (branchTask && !["main", "master", "unknown", "HEAD"].includes(branchTask)) return branchTask;
+  if (strict && active.length > 1) {
+    fail(`Multiple active tickets require an explicit task. Use --task <ticket> or set TASK_ID. Active: ${active.join(", ")}`);
+  }
   return configured || "local";
+}
+
+function applyExplicitTaskOption(options) {
+  if (!options.task) return;
+  const task = String(options.task).trim();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(task)) fail("--task must be a kebab-case ticket name");
+  const active = listTaskNames("active");
+  if (active.length > 0 && !active.includes(task)) {
+    fail(`Explicit task is not active: ${task}`);
+  }
+  process.env.TASK_ID = task;
 }
 
 function readAutonomyState() {
@@ -639,7 +653,7 @@ async function commandCheck() {
   const activeCount = fs.existsSync(activeDir)
     ? fs.readdirSync(activeDir).filter((name) => name.endsWith(".md")).length
     : 0;
-  if (activeCount > 1) warn(`Multiple active tickets detected: ${activeCount}. Prefer one active ticket when switching machines.`);
+  if (activeCount > 1) warn(`Multiple active tickets detected: ${activeCount}. Use --task <ticket> or TASK_ID for verify/run-agent.`);
   else pass(`Active ticket count is safe: ${activeCount}`);
 
   log("----------------------------------------");
@@ -687,15 +701,19 @@ ${type}
 }
 
 function commandStartTicket(args) {
-  const { positional } = parseArgs(args);
+  const { positional, options } = parseArgs(args);
   const [name] = positional;
-  if (!name) fail("Usage: node tools/harness-cli/index.js start-ticket <name>");
+  if (!name) fail("Usage: node tools/harness-cli/index.js start-ticket <name> [--allow-parallel]");
 
   const backlogRel = `.harness/tasks/backlog/${name}.md`;
   const activeRel = `.harness/tasks/active/${name}.md`;
+  const existingActive = listTaskNames("active");
 
   if (!exists(backlogRel)) fail(`Backlog ticket not found: ${backlogRel}`);
   if (exists(activeRel)) fail(`Active task already exists: ${activeRel}`);
+  if (existingActive.length > 0 && !options["allow-parallel"]) {
+    fail(`Another ticket is already active: ${existingActive.join(", ")}. Complete it first or retry with --allow-parallel.`);
+  }
 
   moveFile(backlogRel, activeRel);
   log(`Promoted ticket to active: ${activeRel}`);
@@ -1407,6 +1425,8 @@ function summarizeVerifyFailure(failedStep) {
 async function commandVerify(args) {
   parseEnvFile();
   const { options } = parseArgs(args);
+  applyExplicitTaskOption(options);
+  resolveTaskId({ strict: true });
   const diagnose = options.diagnose || process.env.HARNESS_DIAGNOSE === "true";
   const autoFix = options["auto-fix"] || process.env.HARNESS_AUTO_FIX === "true";
   const offline = options.offline || process.env.HARNESS_OFFLINE === "1" || process.env.HARNESS_OFFLINE === "true";
@@ -1730,6 +1750,7 @@ async function postJson(url, headers, body) {
 async function commandRunAgent(args) {
   parseEnvFile();
   const { positional, options } = parseArgs(args);
+  applyExplicitTaskOption(options);
   const prompt = positional.join(" ").trim();
   if (!prompt) fail("Usage: node tools/harness-cli/index.js run-agent [--type code|architect|review|docs] [--role role] \"prompt\"");
 
@@ -1743,7 +1764,7 @@ async function commandRunAgent(args) {
 
   const provider = process.env.AI_PROVIDER || "openai";
   const model = selectModel(provider, type);
-  const taskName = resolveTaskId();
+  const taskName = resolveTaskId({ strict: true });
   const rolePrompt = readText(`prompts/system/roles/${role}.md`);
   const context = buildContextBundle(type, taskName);
   const systemPrompt = renderPrompt("prompts/templates/agent-system.md", {

@@ -75,7 +75,19 @@ try {
   }
 
   Write-Host "[Smoke Test] 3. Starting ticket..."
-  $startOutput = (& .\scripts\start-ticket.ps1 -TicketName $TicketName 2>&1 | Out-String)
+  if ($preExistingActiveCount -eq 1) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & node "tools/harness-cli/index.js" start-ticket $TicketName 2>$null
+    $parallelStartExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($parallelStartExitCode -eq 0) {
+      throw "Error: Parallel ticket started without explicit opt-in."
+    }
+    $startOutput = (& .\scripts\start-ticket.ps1 -TicketName $TicketName -AllowParallel 2>&1 | Out-String)
+  } else {
+    $startOutput = (& .\scripts\start-ticket.ps1 -TicketName $TicketName 2>&1 | Out-String)
+  }
   Write-Host $startOutput
   $hasOrigin = (Test-Path ".git/config") -and
     (Select-String -Path ".git/config" -Pattern '^\[remote "origin"\]$' -Quiet)
@@ -93,6 +105,16 @@ try {
   }
 
   Write-Host "[Smoke Test] 4. Verifying task..."
+  if ($preExistingActiveCount -eq 1) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & node "tools/harness-cli/index.js" verify --offline 2>$null
+    $ambiguousVerifyExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($ambiguousVerifyExitCode -eq 0) {
+      throw "Error: Ambiguous verification ran without an explicit task."
+    }
+  }
   $env:TASK_ID = $TicketName
   & .\scripts\verify-task.ps1 -Offline
 

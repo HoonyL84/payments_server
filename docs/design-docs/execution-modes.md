@@ -47,6 +47,9 @@ preflight는 필수 도구, `.env.local`, `HARNESS_AGENT_MODE`, provider key, Gi
 `.env.local`이 없으면 `.env.template`에서 자동 생성한다.
 PowerShell에서 `npm`이 실행 정책에 막히면 `npm.cmd run harness -- check`를 사용한다.
 
+active 티켓은 기본적으로 하나만 유지한다. 병렬 작업이 필요하면 `start-ticket <name> --allow-parallel`을 명시하고,
+공통 작업 트리에서 검증할 때는 `verify --task <name>`으로 메트릭 귀속을 명확히 해야 한다.
+
 ### macOS/Linux/WSL
 
 ```bash

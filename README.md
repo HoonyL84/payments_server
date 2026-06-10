@@ -32,6 +32,9 @@ git add -A
 git commit -m "chore(harness): my-task 완료 기록"
 ```
 
+기본적으로 active 티켓은 하나만 허용합니다. 병렬 작업은 `start-ticket <name> --allow-parallel`로 명시하고,
+검증할 때 `npm run harness -- verify --task <name>`처럼 대상 티켓을 지정하세요.
+
 ## 문서 진입점
 
 - 전체 사용 가이드: [docs/HARNESS_GUIDE.md](docs/HARNESS_GUIDE.md)

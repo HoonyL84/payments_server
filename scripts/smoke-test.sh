@@ -68,7 +68,15 @@ if [ ! -f ".harness/tasks/backlog/$TICKET_NAME.md" ]; then
 fi
 
 echo "[Smoke Test] 3. Starting ticket..."
-START_OUTPUT="$(bash scripts/start-ticket.sh "$TICKET_NAME")"
+if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 1 ]; then
+  if bash scripts/start-ticket.sh "$TICKET_NAME" >/dev/null 2>&1; then
+    echo "Error: Parallel ticket started without explicit opt-in."
+    exit 1
+  fi
+  START_OUTPUT="$(bash scripts/start-ticket.sh "$TICKET_NAME" --allow-parallel)"
+else
+  START_OUTPUT="$(bash scripts/start-ticket.sh "$TICKET_NAME")"
+fi
 echo "$START_OUTPUT"
 if git remote get-url origin >/dev/null 2>&1; then
   EXPECTED_START_GUIDANCE="commit and push"
@@ -90,6 +98,12 @@ if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 0 ]; then
 fi
 
 echo "[Smoke Test] 4. Verifying task..."
+if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 1 ]; then
+  if node tools/harness-cli/index.js verify --offline >/dev/null 2>&1; then
+    echo "Error: Ambiguous verification ran without an explicit task."
+    exit 1
+  fi
+fi
 export TASK_ID="$TICKET_NAME"
 bash scripts/verify-task.sh --offline
 
