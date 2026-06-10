@@ -12,5 +12,5 @@ When working in this repository:
 - Treat `docs/project/PLANS.md` as the project goal source.
 - Treat `docs/design-docs/core-beliefs.md` as the architecture and coding rule source.
 - Treat `docs/design-docs/memory-governance.md` as the memory update contract.
-- Prefer the task loop: plan, implement, verify, commit, complete.
+- Prefer the task loop: plan, implement, verify, commit/push, complete, then commit/push completion metadata.
 - If adding a reusable skill, create `skills/<skill_name>/SKILL.md` with YAML frontmatter.

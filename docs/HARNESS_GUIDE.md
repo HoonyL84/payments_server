@@ -127,8 +127,15 @@ npm run harness -- start-ticket user-auth
 npm run harness -- verify
 git add -A
 git commit -m "feat(auth): JWT 기반 사용자 인증 구현"
+git push
 npm run harness -- complete-task user-auth
+git add -A
+git commit -m "chore(harness): user-auth 완료 기록"
+git push
 ```
+
+`complete-task`는 active 티켓을 archive로 이동하고 완료 메타데이터를 기록하므로,
+명령 실행 후 생긴 변경은 별도 마감 커밋으로 저장합니다.
 
 기존 Bash/PowerShell wrapper도 호환용으로 유지됩니다.
 

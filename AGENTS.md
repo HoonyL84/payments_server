@@ -81,7 +81,7 @@
 [4] active 태스크 기준으로 구현 (core-beliefs.md + tech-stack.md 준수)
     └─ 불확실하면 멈추고 질문 / 요청 외 수정 금지 (Karpathy Rules)
 [5] verify-task.sh → 테스트 + 린트 + 빌드 통과
-[6] git commit → complete-task.sh
+[6] 구현 커밋/푸시 → complete-task.sh → archive·완료 메타데이터 커밋/푸시
 ```
 
 ---

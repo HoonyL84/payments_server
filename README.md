@@ -28,6 +28,8 @@ npm run harness -- create-ticket my-task feat --goal "작업 목표"
 npm run harness -- start-ticket my-task
 npm run harness -- verify
 npm run harness -- complete-task my-task --force
+git add -A
+git commit -m "chore(harness): my-task 완료 기록"
 ```
 
 ## 문서 진입점

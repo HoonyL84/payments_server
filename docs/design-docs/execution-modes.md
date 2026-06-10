@@ -58,7 +58,11 @@ npm run harness -- start-ticket my-task
 npm run harness -- verify
 git add -A
 git commit -m "feat: 작업 설명"
+git push
 npm run harness -- complete-task my-task
+git add -A
+git commit -m "chore(harness): my-task 완료 기록"
+git push
 ```
 
 ### Windows PowerShell
@@ -72,7 +76,11 @@ npm run harness -- start-ticket my-task
 npm run harness -- verify
 git add -A
 git commit -m "feat: 작업 설명"
+git push
 npm run harness -- complete-task my-task --force
+git add -A
+git commit -m "chore(harness): my-task 완료 기록"
+git push
 ```
 
 PowerShell만 사용할 때도 같은 Node Harness CLI를 사용하므로 티켓 기록, 검증 로그, API 호출 방식이 macOS/Linux와 동일한 로직을 따른다.
