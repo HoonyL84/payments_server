@@ -68,7 +68,17 @@ if [ ! -f ".harness/tasks/backlog/$TICKET_NAME.md" ]; then
 fi
 
 echo "[Smoke Test] 3. Starting ticket..."
-bash scripts/start-ticket.sh "$TICKET_NAME"
+START_OUTPUT="$(bash scripts/start-ticket.sh "$TICKET_NAME")"
+echo "$START_OUTPUT"
+if git remote get-url origin >/dev/null 2>&1; then
+  EXPECTED_START_GUIDANCE="commit and push"
+else
+  EXPECTED_START_GUIDANCE="commit, run complete-task"
+fi
+if [[ "$START_OUTPUT" != *"$EXPECTED_START_GUIDANCE"* ]]; then
+  echo "Error: Start guidance did not match remote availability."
+  exit 1
+fi
 
 if [ ! -f ".harness/tasks/active/$TICKET_NAME.md" ]; then
   echo "Error: Active ticket file was not created."
@@ -89,7 +99,17 @@ if [ ! -f "observability/metrics/$TICKET_NAME.verify.json" ]; then
 fi
 
 echo "[Smoke Test] 5. Completing task..."
-node tools/harness-cli/index.js complete-task "$TICKET_NAME"
+COMPLETE_OUTPUT="$(node tools/harness-cli/index.js complete-task "$TICKET_NAME")"
+echo "$COMPLETE_OUTPUT"
+if git remote get-url origin >/dev/null 2>&1; then
+  EXPECTED_COMPLETE_GUIDANCE="commit and push the archived"
+else
+  EXPECTED_COMPLETE_GUIDANCE="commit the archived"
+fi
+if [[ "$COMPLETE_OUTPUT" != *"$EXPECTED_COMPLETE_GUIDANCE"* ]]; then
+  echo "Error: Completion guidance did not match remote availability."
+  exit 1
+fi
 
 if [ ! -f ".harness/tasks/archive/$TICKET_NAME.md" ]; then
   echo "Error: Archive ticket file was not created."

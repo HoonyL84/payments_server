@@ -464,6 +464,10 @@ function hasGitRemoteOrigin() {
   return run("git", ["remote", "get-url", "origin"], { capture: true }).status === 0;
 }
 
+function gitPublishAction() {
+  return hasGitRemoteOrigin() ? "commit and push" : "commit";
+}
+
 async function commandCheck() {
   let failed = 0;
   let warned = 0;
@@ -695,7 +699,8 @@ function commandStartTicket(args) {
 
   moveFile(backlogRel, activeRel);
   log(`Promoted ticket to active: ${activeRel}`);
-  log("Next: implement, verify, commit/push, run complete-task, then commit/push completion metadata.");
+  const publishAction = gitPublishAction();
+  log(`Next: implement, verify, ${publishAction}, run complete-task, then ${publishAction} completion metadata.`);
 }
 
 function commandCompleteTask(args) {
@@ -787,7 +792,7 @@ function commandCompleteTask(args) {
 
   log(`[Harness] Done metric written: ${doneRel}`);
   log("[Harness] Task complete.");
-  log("[Harness] Next: commit and push the archived ticket and completion metadata.");
+  log(`[Harness] Next: ${gitPublishAction()} the archived ticket and completion metadata.`);
 }
 
 function appendTaskCompletion(archiveRel, verify) {
@@ -1169,7 +1174,8 @@ async function commandAutonomy(args) {
       log("1. Read the active ticket and linked design documents.");
       log("2. Implement the ticket with surgical changes.");
       log(`3. Run: npm run harness -- autonomy --verify-current`);
-      log("4. Commit/push the verified diff, complete the task, then commit/push completion metadata.");
+      const publishAction = gitPublishAction();
+      log(`4. ${publishAction} the verified diff, complete the task, then ${publishAction} completion metadata.`);
       log("5. Run autonomy again to continue with the next backlog ticket.");
     } else {
       log("No ticket is available. The active conversational agent must decompose docs/project/PLANS.md into backlog tickets, then run autonomy again.");
@@ -1302,7 +1308,7 @@ async function commandAutonomy(args) {
         current_ticket: ticket,
         verified_patch: patchRel,
         changed_files: patchInfo.paths,
-        next_action: "commit/push the verified diff, complete the task, then commit/push completion metadata",
+        next_action: `${gitPublishAction()} the verified diff, complete the task, then ${gitPublishAction()} completion metadata`,
       });
       log(`[L5 Experimental] ${ticket} passed verification. Auto-commit is disabled, so execution paused for review.`);
       return;

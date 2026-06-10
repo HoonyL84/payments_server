@@ -75,7 +75,14 @@ try {
   }
 
   Write-Host "[Smoke Test] 3. Starting ticket..."
-  & .\scripts\start-ticket.ps1 -TicketName $TicketName
+  $startOutput = (& .\scripts\start-ticket.ps1 -TicketName $TicketName 2>&1 | Out-String)
+  Write-Host $startOutput
+  $hasOrigin = (Test-Path ".git/config") -and
+    (Select-String -Path ".git/config" -Pattern '^\[remote "origin"\]$' -Quiet)
+  $expectedStartGuidance = if ($hasOrigin) { "commit and push" } else { "commit, run complete-task" }
+  if (-not $startOutput.Contains($expectedStartGuidance)) {
+    throw "Error: Start guidance did not match remote availability."
+  }
 
   if (-not (Test-Path ".harness/tasks/active/$TicketName.md")) {
     throw "Error: Active ticket file was not created."
@@ -94,7 +101,12 @@ try {
   }
 
   Write-Host "[Smoke Test] 5. Completing task..."
-  & .\scripts\complete-task.ps1 -TaskName $TicketName
+  $completeOutput = (& .\scripts\complete-task.ps1 -TaskName $TicketName 2>&1 | Out-String)
+  Write-Host $completeOutput
+  $expectedCompleteGuidance = if ($hasOrigin) { "commit and push the archived" } else { "commit the archived" }
+  if (-not $completeOutput.Contains($expectedCompleteGuidance)) {
+    throw "Error: Completion guidance did not match remote availability."
+  }
 
   if (-not (Test-Path ".harness/tasks/archive/$TicketName.md")) {
     throw "Error: Archive ticket file was not created."

@@ -127,11 +127,11 @@ npm run harness -- start-ticket user-auth
 npm run harness -- verify
 git add -A
 git commit -m "feat(auth): JWT 기반 사용자 인증 구현"
-git push
+# 원격 저장소가 설정된 경우에만: git push
 npm run harness -- complete-task user-auth
 git add -A
 git commit -m "chore(harness): user-auth 완료 기록"
-git push
+# 원격 저장소가 설정된 경우에만: git push
 ```
 
 `complete-task`는 active 티켓을 archive로 이동하고 완료 메타데이터를 기록하므로,
