@@ -20,6 +20,10 @@ function Cleanup-TestFiles {
   Remove-Item -Path ".harness/valid-auto-fix.patch" -ErrorAction SilentlyContinue
   Remove-Item -Path ".harness/blocked-auto-fix.patch" -ErrorAction SilentlyContinue
   Remove-Item -Path ".harness/new-file-auto-fix.patch" -ErrorAction SilentlyContinue
+  Remove-Item -Path ".harness/safe-l5.patch" -ErrorAction SilentlyContinue
+  Remove-Item -Path ".harness/risky-l5.patch" -ErrorAction SilentlyContinue
+  Remove-Item -Path ".harness/protected-l5.patch" -ErrorAction SilentlyContinue
+  Remove-Item -Path "observability/autonomy/state.json" -ErrorAction SilentlyContinue
 }
 
 # Clean up before run
@@ -47,6 +51,19 @@ try {
   if (-not (Test-Path ".harness/tasks/active/$TicketName.md")) {
     throw "Error: Active ticket file was not created."
   }
+
+  Write-Host "[Smoke Test] 3-1. Checking interactive L5 checkpoint..."
+  $previousLevel = $env:HARNESS_AUTONOMY_LEVEL
+  $env:HARNESS_AUTONOMY_LEVEL = "5"
+  & node "tools/harness-cli/index.js" autonomy
+  if ($LASTEXITCODE -ne 0) {
+    throw "Error: Interactive L5 checkpoint failed."
+  }
+  & node "tools/harness-cli/index.js" autonomy --verify-current
+  if ($LASTEXITCODE -ne 0) {
+    throw "Error: Interactive L5 verification failed."
+  }
+  $env:HARNESS_AUTONOMY_LEVEL = $previousLevel
 
   Write-Host "[Smoke Test] 4. Verifying task..."
   $env:TASK_ID = $TicketName
@@ -105,6 +122,48 @@ new file mode 100644
   if ($LASTEXITCODE -eq 0) {
     throw "Error: New file patch was not rejected."
   }
+
+  Write-Host "[Smoke Test] 7. Validating L5 policy and opt-in gate..."
+  @"
+diff --git a/src/new-feature.js b/src/new-feature.js
+new file mode 100644
+--- /dev/null
++++ b/src/new-feature.js
+@@ -0,0 +1 @@
++export const enabled = true;
+"@ | Set-Content -Encoding UTF8 ".harness/safe-l5.patch"
+  & node "tools/harness-cli/index.js" validate-l5-patch ".harness/safe-l5.patch"
+
+  @"
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{}
++{"private":true}
+"@ | Set-Content -Encoding UTF8 ".harness/risky-l5.patch"
+  & node "tools/harness-cli/index.js" validate-l5-patch ".harness/risky-l5.patch"
+
+  @"
+diff --git a/.env.local b/.env.local
+--- a/.env.local
++++ b/.env.local
+@@ -1 +1 @@
+-SECRET=old
++SECRET=new
+"@ | Set-Content -Encoding UTF8 ".harness/protected-l5.patch"
+  & node "tools/harness-cli/index.js" validate-l5-patch ".harness/protected-l5.patch"
+  if ($LASTEXITCODE -eq 0) {
+    throw "Error: Protected secret patch was not rejected."
+  }
+
+  $previousLevel = $env:HARNESS_AUTONOMY_LEVEL
+  $env:HARNESS_AUTONOMY_LEVEL = "4.5"
+  & node "tools/harness-cli/index.js" autonomy
+  if ($LASTEXITCODE -eq 0) {
+    throw "Error: L5 autonomy ran without explicit opt-in."
+  }
+  $env:HARNESS_AUTONOMY_LEVEL = $previousLevel
 
   Write-Host "[Smoke Test] Success! Complete harness flow works seamlessly."
 } finally {
