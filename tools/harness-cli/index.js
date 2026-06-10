@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs");
+const crypto = require("crypto");
 const http = require("http");
 const path = require("path");
 const os = require("os");
@@ -1114,6 +1115,35 @@ function dirtyPaths() {
   return result.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3).trim());
 }
 
+function worktreeSnapshot() {
+  const diff = run("git", ["diff", "--binary", "HEAD"], { capture: true });
+  const untracked = run("git", ["ls-files", "--others", "--exclude-standard", "-z"], { capture: true });
+  if (diff.status !== 0 || diff.error || untracked.status !== 0 || untracked.error) return null;
+
+  const untrackedPaths = untracked.stdout.split("\0").filter(Boolean).sort();
+  const hash = crypto.createHash("sha256");
+  hash.update(diff.stdout);
+  for (const rel of untrackedPaths) {
+    hash.update(`\0${rel}\0`);
+    const absolute = path.join(ROOT, rel);
+    if (fs.existsSync(absolute) && fs.statSync(absolute).isFile()) {
+      hash.update(fs.readFileSync(absolute));
+    }
+  }
+  return {
+    fingerprint: hash.digest("hex"),
+    paths: dirtyPaths() || [],
+  };
+}
+
+function describeWorktreeDrift(before, after) {
+  const beforePaths = new Set(before.paths);
+  const newPaths = after.paths.filter((rel) => !beforePaths.has(rel));
+  return newPaths.length > 0
+    ? `verification changed the worktree: ${newPaths.slice(0, 10).join(", ")}`
+    : "verification changed files that were already dirty";
+}
+
 function gitHeadSha() {
   const result = run("git", ["rev-parse", "HEAD"], { capture: true });
   return result.status === 0 ? result.stdout.trim() : "unknown";
@@ -1448,6 +1478,7 @@ async function commandVerify(args) {
   const gradleCommand = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
 
   while (attempt < maxAttempts && !verifyPassed) {
+    const worktreeBefore = worktreeSnapshot();
     say(`[Harness] Verify execution started (Attempt ${attempt + 1}/${maxAttempts})`);
     if (offline) say("[OFFLINE] AI review skipped");
 
@@ -1497,6 +1528,22 @@ async function commandVerify(args) {
     } else {
       recordVerify("fail", "unsupported-project");
       fail("No supported project type detected. Please verify manually.");
+    }
+
+    if (success && worktreeBefore) {
+      const worktreeAfter = worktreeSnapshot();
+      if (worktreeAfter && worktreeAfter.fingerprint !== worktreeBefore.fingerprint) {
+        const detail = describeWorktreeDrift(worktreeBefore, worktreeAfter);
+        failedStep = {
+          label: "Worktree guard",
+          command: "git",
+          stepArgs: ["status", "--short"],
+          status: 1,
+          stdout: "",
+          stderr: detail,
+        };
+        success = false;
+      }
     }
 
     if (success) {
