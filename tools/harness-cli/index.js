@@ -1370,22 +1370,38 @@ function recordVerify(result, reason) {
   const task = resolveTaskId();
   const rel = `observability/metrics/${task}.verify.json`;
   let reworkCount = 0;
+  let lastFailReason = "";
   if (exists(rel)) {
     try {
       const previous = JSON.parse(readText(rel));
       reworkCount = previous.rework_count || 0;
+      lastFailReason = previous.last_fail_reason || "";
     } catch {
       reworkCount = 0;
+      lastFailReason = "";
     }
   }
   if (result === "fail") reworkCount += 1;
+  if (reason) lastFailReason = reason;
   writeText(rel, JSON.stringify({
     task,
     last_verify: currentTimestamp(),
     result,
-    ...(reason ? { last_fail_reason: reason } : {}),
+    ...(lastFailReason ? { last_fail_reason: lastFailReason } : {}),
     rework_count: reworkCount,
   }, null, 2));
+}
+
+function summarizeVerifyFailure(failedStep) {
+  const combined = `${failedStep.stderr || ""}\n${failedStep.stdout || ""}`;
+  const lines = combined
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const detail = lines.find((line) => /assertionerror|exception|error:|\bfail(?:ed|ure)?\b/i.test(line))
+    || lines[0]
+    || `exit code ${failedStep.status}`;
+  return `${failedStep.label}: ${detail}`.slice(0, 500);
 }
 
 async function commandVerify(args) {
@@ -1475,6 +1491,15 @@ async function commandVerify(args) {
       break;
     }
 
+    const failureReason = summarizeVerifyFailure(failedStep);
+    say(`[Failure] ${failureReason}`);
+    if (failedStep.stderr.trim()) {
+      say(`[Failure stderr]\n${failedStep.stderr.trim().slice(-2000)}`);
+    }
+    if (failedStep.stdout.trim()) {
+      say(`[Failure stdout]\n${failedStep.stdout.trim().slice(-1000)}`);
+    }
+
     if (appliedPatchRel) {
       try {
         applyGitPatch(appliedPatchRel, true);
@@ -1482,7 +1507,7 @@ async function commandVerify(args) {
       } catch (err) {
         say(`[Auto-fix] CRITICAL: Automatic rollback failed: ${err.message}`);
       }
-      recordVerify("fail", failedStep.label);
+      recordVerify("fail", failureReason);
       writeText(logRel, lines.join(os.EOL));
       await sendSlackNotification("fail", `❌ Auto-fix failed verification and rollback was attempted.\nStep: ${failedStep.label}\nPatch: ${appliedPatchRel}`);
       process.exit(failedStep.status);
@@ -1553,7 +1578,7 @@ Safety contract:
         say(`3. Use codebase search / file write tools to fix the issue.`);
         say(`4. Once fixed, execute verification again using: npm run harness -- verify`);
         say(`======================================================\n`);
-        recordVerify("fail", failedStep.label);
+        recordVerify("fail", failureReason);
         writeText(logRel, lines.join(os.EOL));
         process.exit(failedStep.status);
       }
@@ -1579,13 +1604,13 @@ Please review the error logs, identify the root cause, and write a detailed reco
       }
 
       // Exit immediately after generating the diagnose guidance in API mode
-      recordVerify("fail", failedStep.label);
+      recordVerify("fail", failureReason);
       writeText(logRel, lines.join(os.EOL));
       await sendSlackNotification("fail", `❌ Verification step [${failedStep.label}] failed.\nCommand: ${failedStep.command} ${failedStep.stepArgs.join(" ")}\nSelf-diagnosis completed. Recovery guide generated.`);
       process.exit(failedStep.status);
     } else {
       // Verification failed and no diagnose/exhausted attempts
-      recordVerify("fail", failedStep.label);
+      recordVerify("fail", failureReason);
       writeText(logRel, lines.join(os.EOL));
       await sendSlackNotification("fail", `❌ Verification step [${failedStep.label}] failed.\nCommand: ${failedStep.command} ${failedStep.stepArgs.join(" ")}\nSelf-diagnosis is disabled or completed.`);
       process.exit(failedStep.status);
