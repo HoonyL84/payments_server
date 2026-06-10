@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # [Harness] 1단계: 태스크 시작 — 워크트리 + EXEC_PLAN 생성
-# Usage: bash scripts/start-task.sh <task-name> <feat|fix|refactor|docs|chore|experiment> [--issue <number>]
+# Usage: bash scripts/start-task.sh <task-name> <feat|fix|refactor|docs|chore|test|experiment> [--issue <number>]
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,15 +9,15 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR" || exit 1
 
 if [ $# -lt 2 ]; then
-  echo "❌ 사용법: bash scripts/start-task.sh <task-name> <feat|fix|refactor|docs|chore|experiment> [--issue <number>]"
+  echo "❌ 사용법: bash scripts/start-task.sh <task-name> <feat|fix|refactor|docs|chore|test|experiment> [--issue <number>]"
   exit 1
 fi
 
 TASK_NAME=$1
 TASK_TYPE=$2
 
-if [[ ! "$TASK_TYPE" =~ ^(feat|fix|refactor|docs|chore|experiment)$ ]]; then
-  echo "❌ 오류: task type은 feat, fix, refactor, docs, chore, experiment 중 하나여야 합니다."
+if [[ ! "$TASK_TYPE" =~ ^(feat|fix|refactor|docs|chore|test|experiment)$ ]]; then
+  echo "❌ 오류: task type은 feat, fix, refactor, docs, chore, test, experiment 중 하나여야 합니다."
   exit 1
 fi
 

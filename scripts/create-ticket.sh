@@ -2,7 +2,7 @@
 # ==============================================================================
 # [Harness] Backlog ticket creator
 # Usage:
-#   bash scripts/create-ticket.sh <ticket-name> <feat|fix|refactor|docs|chore|experiment> --goal "..."
+#   bash scripts/create-ticket.sh <ticket-name> <feat|fix|refactor|docs|chore|test|experiment> --goal "..."
 # ==============================================================================
 
 set -euo pipefail

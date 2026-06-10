@@ -3,7 +3,7 @@ param(
   [string]$TicketName,
 
   [Parameter(Mandatory = $true)]
-  [ValidateSet("feat", "fix", "refactor", "docs", "chore", "experiment")]
+  [ValidateSet("feat", "fix", "refactor", "docs", "chore", "test", "experiment")]
   [string]$Type,
 
   [Parameter(Mandatory = $true)]

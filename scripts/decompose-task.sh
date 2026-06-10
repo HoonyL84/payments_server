@@ -46,7 +46,7 @@ ${AGENTS_CONTENT}
 1. 각 태스크는 1~2일 내에 완료 가능한 크기
 2. 태스크 간 의존성을 고려하여 순서 정렬 (선행 태스크 먼저)
 3. 태스크 이름은 kebab-case (예: ad-domain-model)
-4. 타입은 feat, fix, refactor, docs, chore, experiment 중 하나
+4. 타입은 feat, fix, refactor, docs, chore, test, experiment 중 하나
 5. 반드시 아래 JSON 형식으로만 응답 (설명 텍스트 없이)
 
 응답 형식:
@@ -158,7 +158,7 @@ if [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ]; then
     echo ""
     echo "  ▶ 생성 중: $TYPE/$NAME"
 
-    if [[ ! "$TYPE" =~ ^(feat|fix|refactor|docs|chore|experiment)$ ]]; then
+    if [[ ! "$TYPE" =~ ^(feat|fix|refactor|docs|chore|test|experiment)$ ]]; then
       echo "  ⚠️ 지원하지 않는 타입이라 건너뜀: $TYPE/$NAME"
       continue
     fi

@@ -55,7 +55,7 @@ if [ "$PRE_EXISTING_ACTIVE_COUNT" -eq 1 ]; then
 fi
 
 echo "[Smoke Test] 2. Creating ticket..."
-bash scripts/create-ticket.sh "$TICKET_NAME" "chore" \
+bash scripts/create-ticket.sh "$TICKET_NAME" "test" \
   --goal "Verify cli quoting works" \
   --scope "Test scope with spaces" \
   --out-of-scope "Test out of scope" \

@@ -9,7 +9,7 @@ const { spawnSync } = require("child_process");
 const ROOT = path.resolve(__dirname, "..", "..");
 process.chdir(ROOT);
 
-const VALID_TYPES = new Set(["feat", "fix", "refactor", "docs", "chore", "experiment"]);
+const VALID_TYPES = new Set(["feat", "fix", "refactor", "docs", "chore", "test", "experiment"]);
 const VALID_ROLES = new Set(["planner", "architect", "implementer", "reviewer", "verifier", "recorder", "memory", "release"]);
 const AUTO_FIX_ALLOWED_ROOTS = new Set(["src", "app", "lib", "test", "tests", "__tests__"]);
 const AUTO_FIX_ALLOWED_EXTENSIONS = new Set([

@@ -63,7 +63,7 @@ try {
   }
 
   Write-Host "[Smoke Test] 2. Creating ticket..."
-  & .\scripts\create-ticket.ps1 -TicketName $TicketName -Type "chore" `
+  & .\scripts\create-ticket.ps1 -TicketName $TicketName -Type "test" `
     -Goal "Verify cli quoting works" `
     -Scope "Test scope with spaces" `
     -OutOfScope "Test out of scope" `
