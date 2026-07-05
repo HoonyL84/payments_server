@@ -39,3 +39,21 @@ observability/metrics/*.json
 !observability/metrics/.gitkeep
 observability/autonomy/*.json
 observability/orchestration/
+# Java / Spring local outputs
+*.class
+*.jar
+*.war
+*.jfr
+hs_err_pid*
+replay_pid*
+
+# Test and load-test outputs
+reports/
+test-results/
+k6-results/
+*.summary.json
+*.har
+
+# Local runtime state
+.tmp/
+tmp/

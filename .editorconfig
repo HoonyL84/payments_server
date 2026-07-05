@@ -10,3 +10,15 @@ trim_trailing_whitespace = true
 
 [*.md]
 trim_trailing_whitespace = false
+
+[*.{java,kt,kts,gradle}]
+indent_size = 4
+
+[*.{xml,properties,sql}]
+indent_size = 2
+
+[*.{yml,yaml,json,js}]
+indent_size = 2
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
