@@ -20,6 +20,14 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - 장애 이후 stuck 상태를 진단하고 복구할 수 있는가?
 - 고동시성 상황에서도 중복 처리와 상태 전이가 깨지지 않는가?
 
+## 블로그
+
+- [0. 결제 프로젝트를 시작하는 이유](https://velog.io/@hoonyl/0.-%EA%B2%B0%EC%A0%9C-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8%EB%A5%BC-%EC%8B%9C%EC%9E%91%ED%95%98%EB%8A%94-%EC%9D%B4%EC%9C%A0)
+- [1. 결제 코어의 경계를 먼저 정한 이유](https://velog.io/@hoonyl/1.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EC%9D%98-%EA%B2%BD%EA%B3%84%EB%A5%BC-%EB%A8%BC%EC%A0%80-%EC%A0%95%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+- [2. 결제 요청은 어디서부터 통제해야 하는가](https://velog.io/@hoonyl/2.-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%80-%EC%96%B4%EB%94%94%EC%84%9C%EB%B6%80%ED%84%B0-%ED%86%B5%EC%A0%9C%ED%95%B4%EC%95%BC-%ED%95%98%EB%8A%94%EA%B0%80)
+- [3. 결제 코어를 올릴 실행 골격](https://velog.io/@hoonyl/3.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%A5%BC-%EC%98%AC%EB%A6%B4-%EC%8B%A4%ED%96%89-%EA%B3%A8%EA%B2%A9)
+- [4. 결제는 상태 전이로 먼저 모델링해야 한다](https://velog.io/@hoonyl/4.-%EA%B2%B0%EC%A0%9C%EB%8A%94-%EC%83%81%ED%83%9C-%EC%A0%84%EC%9D%B4%EB%A1%9C-%EB%A8%BC%EC%A0%80-%EB%AA%A8%EB%8D%B8%EB%A7%81%ED%95%B4%EC%95%BC-%ED%95%9C%EB%8B%A4)
+
 ## 테스트 데이터 정책
 
 이 프로젝트는 상시 운영 서버가 아니라 반복 가능한 로컬/k6 검증 환경을 기준으로 합니다.
