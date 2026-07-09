@@ -4,7 +4,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 커머스 전체를 구현하는 것이 아니라, 결제 승인/취소 과정에서 발생하는 중복 요청, PG timeout unknown, 상태 전이, 원장 정합성, outbox, 복구 흐름을 검증하는 것이 목표입니다.
 
 아직 모든 기능이 구현된 상태는 아닙니다.
-현재는 프로젝트 목표와 경계를 정리하고, Spring Boot 실행 골격과 결제 상태 모델을 세팅한 단계입니다.
+현재는 프로젝트 목표와 경계를 정리하고, Spring Boot 실행 골격, 결제 상태 모델, 멱등 승인 흐름까지 구현한 단계입니다.
 
 ## 목표
 
@@ -27,6 +27,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [2. 결제 요청은 어디서부터 통제해야 하는가](https://velog.io/@hoonyl/2.-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%80-%EC%96%B4%EB%94%94%EC%84%9C%EB%B6%80%ED%84%B0-%ED%86%B5%EC%A0%9C%ED%95%B4%EC%95%BC-%ED%95%98%EB%8A%94%EA%B0%80)
 - [3. 결제 코어를 올릴 실행 골격](https://velog.io/@hoonyl/3.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%A5%BC-%EC%98%AC%EB%A6%B4-%EC%8B%A4%ED%96%89-%EA%B3%A8%EA%B2%A9)
 - [4. 결제는 상태 전이로 먼저 모델링해야 한다](https://velog.io/@hoonyl/4.-%EA%B2%B0%EC%A0%9C%EB%8A%94-%EC%83%81%ED%83%9C-%EC%A0%84%EC%9D%B4%EB%A1%9C-%EB%A8%BC%EC%A0%80-%EB%AA%A8%EB%8D%B8%EB%A7%81%ED%95%B4%EC%95%BC-%ED%95%9C%EB%8B%A4)
+- [5. 결제 승인은 API보다 중복 호출 방지가 먼저다](https://velog.io/@hoonyl/5.-%EA%B2%B0%EC%A0%9C-%EC%8A%B9%EC%9D%B8%EC%9D%80-API%EB%B3%B4%EB%8B%A4-%EC%A4%91%EB%B3%B5-%ED%98%B8%EC%B6%9C-%EB%B0%A9%EC%A7%80%EA%B0%80-%EB%A8%BC%EC%A0%80%EB%8B%A4)
 
 ## 테스트 데이터 정책
 
@@ -61,10 +62,11 @@ src/main/java/io/hoony/payment/
 ├── infrastructure/
 └── presentation/
     ├── common/
-    └── health/
+    ├── health/
+    └── payment/
 ```
 
-현재 존재하는 코드는 Spring Boot 애플리케이션, health endpoint, 공통 error response, trace id filter, 결제/취소 상태 모델입니다.
+현재 존재하는 코드는 Spring Boot 애플리케이션, health endpoint, 공통 error response, trace id filter, 결제/취소 상태 모델, 멱등 승인 API 흐름입니다.
 
 도메인 모델은 결제 승인과 취소를 CRUD가 아니라 상태 전이로 다룹니다.
 금액은 정수 minor unit으로 처리하고, 결제 생성 이후 승인 금액은 변경하지 않습니다.
