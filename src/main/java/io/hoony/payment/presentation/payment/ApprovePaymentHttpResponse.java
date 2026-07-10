@@ -7,10 +7,9 @@ import java.util.UUID;
 
 public record ApprovePaymentHttpResponse(
         UUID paymentId,
-        PaymentState state,
-        boolean reused
+        PaymentState state
 ) {
     public static ApprovePaymentHttpResponse from(ApprovePaymentResult result) {
-        return new ApprovePaymentHttpResponse(result.paymentId(), result.state(), result.reused());
+        return new ApprovePaymentHttpResponse(result.paymentId(), result.state());
     }
 }

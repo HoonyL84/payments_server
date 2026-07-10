@@ -9,4 +9,8 @@ public record PgApproveResult(PgApproveStatus status) {
     public static PgApproveResult declined() {
         return new PgApproveResult(PgApproveStatus.DECLINED);
     }
+
+    public static PgApproveResult timedOut() {
+        return new PgApproveResult(PgApproveStatus.TIMED_OUT);
+    }
 }

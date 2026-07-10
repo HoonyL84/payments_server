@@ -4,6 +4,10 @@ import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
 import io.hoony.payment.application.port.out.PaymentAttemptRepository;
 import io.hoony.payment.application.port.out.PaymentRepository;
 import io.hoony.payment.domain.common.DomainException;
+import io.hoony.payment.domain.common.ResourceConflictException;
+import io.hoony.payment.domain.idempotency.IdempotencyOperation;
+import io.hoony.payment.domain.idempotency.IdempotencyRecord;
+import io.hoony.payment.domain.idempotency.IdempotencyScope;
 import io.hoony.payment.domain.money.Money;
 import io.hoony.payment.domain.payment.PaymentState;
 import io.hoony.payment.infrastructure.memory.InMemoryIdempotencyRecordRepository;
@@ -13,6 +17,7 @@ import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -139,5 +144,72 @@ class ApprovePaymentServiceTest {
                 .isInstanceOf(DomainException.class)
                 .hasMessageContaining("already exists");
         assertThat(gateway.approveCallCount()).isEqualTo(1);
+    }
+
+    @Test
+    void approve_같은key라도_가맹점이다르면_서로다른scope로_처리한다() {
+        FakePaymentGateway gateway = new FakePaymentGateway();
+        PaymentRepository payments = new InMemoryPaymentRepository();
+        ApprovePaymentService service = new ApprovePaymentService(
+                new InMemoryIdempotencyRecordRepository(),
+                payments,
+                new InMemoryPaymentAttemptRepository(),
+                gateway,
+                Clock.systemUTC()
+        );
+
+        service.approve(new ApprovePaymentCommand(
+                "shared-key",
+                "user-1",
+                "merchant-1",
+                "order-merchant-1",
+                Money.positiveKrw(30_000)
+        ));
+        service.approve(new ApprovePaymentCommand(
+                "shared-key",
+                "user-2",
+                "merchant-2",
+                "order-merchant-2",
+                Money.positiveKrw(30_000)
+        ));
+
+        assertThat(gateway.approveCallCount()).isEqualTo(2);
+        assertThat(payments.count()).isEqualTo(2);
+    }
+
+    @Test
+    void approve_처리중인멱등요청은_pg를다시호출하지않고_409대상으로_거부한다() {
+        InMemoryIdempotencyRecordRepository idempotencyRecords =
+                new InMemoryIdempotencyRecordRepository();
+        FakePaymentGateway gateway = new FakePaymentGateway();
+        ApprovePaymentService service = new ApprovePaymentService(
+                idempotencyRecords,
+                new InMemoryPaymentRepository(),
+                new InMemoryPaymentAttemptRepository(),
+                gateway,
+                Clock.systemUTC()
+        );
+        ApprovePaymentCommand command = new ApprovePaymentCommand(
+                "processing-key",
+                "user-1",
+                "merchant-1",
+                "order-processing-1",
+                Money.positiveKrw(30_000)
+        );
+        IdempotencyScope scope = new IdempotencyScope(
+                command.merchantId(),
+                IdempotencyOperation.APPROVE,
+                command.idempotencyKey()
+        );
+        idempotencyRecords.save(IdempotencyRecord.start(
+                scope,
+                ApprovalRequestFingerprint.from(command),
+                Instant.now()
+        ));
+
+        assertThatThrownBy(() -> service.approve(command))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessageContaining("still processing");
+        assertThat(gateway.approveCallCount()).isZero();
     }
 }

@@ -1,7 +1,7 @@
 package io.hoony.payment.infrastructure.pg;
 
-public enum PgApproveStatus {
+public enum PgConfirmApproveStatus {
     APPROVED,
     DECLINED,
-    TIMED_OUT
+    UNKNOWN
 }

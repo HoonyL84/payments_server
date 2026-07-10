@@ -16,7 +16,7 @@ public class Payment {
     private final String merchantId;
     private final String orderId;
     private final Money amount;
-    private PaymentState state;
+    private volatile PaymentState state;
     private Money canceledAmount;
 
     private Payment(UUID id, String userId, String merchantId, String orderId, Money amount) {

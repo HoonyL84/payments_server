@@ -1,6 +1,7 @@
 package io.hoony.payment.presentation.payment;
 
 import io.hoony.payment.application.approval.ApprovePaymentCommand;
+import io.hoony.payment.application.approval.ApprovePaymentResult;
 import io.hoony.payment.application.approval.ApprovePaymentService;
 import io.hoony.payment.domain.money.Money;
 import jakarta.validation.Valid;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/payments")
 public class PaymentApprovalController {
 
+    public static final String IDEMPOTENCY_REPLAYED_HEADER = "Idempotency-Replayed";
+
     private final ApprovePaymentService approvePaymentService;
 
     public PaymentApprovalController(ApprovePaymentService approvePaymentService) {
@@ -29,13 +32,15 @@ public class PaymentApprovalController {
             @RequestHeader("Idempotency-Key") @NotBlank String idempotencyKey,
             @Valid @RequestBody ApprovePaymentHttpRequest request
     ) {
-        ApprovePaymentCommand command = new ApprovePaymentCommand(
+        ApprovePaymentResult result = approvePaymentService.approve(new ApprovePaymentCommand(
                 idempotencyKey,
                 request.userId(),
                 request.merchantId(),
                 request.orderId(),
                 new Money(request.amountMinorUnits(), request.currency())
-        );
-        return ResponseEntity.ok(ApprovePaymentHttpResponse.from(approvePaymentService.approve(command)));
+        ));
+        return ResponseEntity.ok()
+                .header(IDEMPOTENCY_REPLAYED_HEADER, Boolean.toString(result.reused()))
+                .body(ApprovePaymentHttpResponse.from(result));
     }
 }

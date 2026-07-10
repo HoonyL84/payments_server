@@ -37,13 +37,36 @@ class PaymentStateMachineTest {
     }
 
     @Test
-    void transition_pending_confirmation은_confirm으로만_최종상태가_된다() {
-        PaymentState pending = PaymentState.PENDING_CONFIRMATION;
+    void transition_confirm은_claim후_최종상태로_전이한다() {
+        PaymentState confirming = PaymentStateMachine.transition(
+                PaymentState.PENDING_CONFIRMATION,
+                PaymentEvent.CONFIRM_STARTED
+        );
 
-        assertThat(PaymentStateMachine.transition(pending, PaymentEvent.CONFIRM_APPROVED))
+        assertThat(confirming).isEqualTo(PaymentState.CONFIRMING);
+        assertThat(PaymentStateMachine.transition(confirming, PaymentEvent.CONFIRM_APPROVED))
                 .isEqualTo(PaymentState.APPROVED);
-        assertThat(PaymentStateMachine.transition(pending, PaymentEvent.CONFIRM_FAILED))
+        assertThat(PaymentStateMachine.transition(confirming, PaymentEvent.CONFIRM_FAILED))
                 .isEqualTo(PaymentState.FAILED);
+    }
+
+    @Test
+    void transition_confirm결과가_unknown이면_pending으로_돌아간다() {
+        PaymentState confirming = PaymentStateMachine.transition(
+                PaymentState.PENDING_CONFIRMATION,
+                PaymentEvent.CONFIRM_STARTED
+        );
+
+        assertThat(PaymentStateMachine.transition(confirming, PaymentEvent.CONFIRM_UNKNOWN))
+                .isEqualTo(PaymentState.PENDING_CONFIRMATION);
+    }
+
+    @Test
+    void transition_confirming상태를_다시_claim할수없다() {
+        assertThatThrownBy(() -> PaymentStateMachine.transition(
+                PaymentState.CONFIRMING,
+                PaymentEvent.CONFIRM_STARTED
+        )).isInstanceOf(InvalidStateTransitionException.class);
     }
 
     @Test

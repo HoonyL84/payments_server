@@ -1,16 +1,10 @@
 package io.hoony.payment.domain.payment;
 
-/**
- * Directed state graph for payment approval.
- */
 public final class PaymentStateMachine {
 
     private PaymentStateMachine() {
     }
 
-    /**
-     * Applies an approval event to the current state.
-     */
     public static PaymentState transition(PaymentState current, PaymentEvent event) {
         return switch (event) {
             case APPROVE_STARTED -> require(current, PaymentState.REQUESTED, event, PaymentState.APPROVING);
@@ -22,9 +16,36 @@ public final class PaymentStateMachine {
                     PaymentState.REQUESTED,
                     PaymentState.APPROVING
             );
-            case APPROVE_TIMED_OUT -> require(current, PaymentState.APPROVING, event, PaymentState.PENDING_CONFIRMATION);
-            case CONFIRM_APPROVED -> require(current, PaymentState.PENDING_CONFIRMATION, event, PaymentState.APPROVED);
-            case CONFIRM_FAILED -> require(current, PaymentState.PENDING_CONFIRMATION, event, PaymentState.FAILED);
+            case APPROVE_TIMED_OUT -> require(
+                    current,
+                    PaymentState.APPROVING,
+                    event,
+                    PaymentState.PENDING_CONFIRMATION
+            );
+            case CONFIRM_STARTED -> require(
+                    current,
+                    PaymentState.PENDING_CONFIRMATION,
+                    event,
+                    PaymentState.CONFIRMING
+            );
+            case CONFIRM_APPROVED -> require(
+                    current,
+                    PaymentState.CONFIRMING,
+                    event,
+                    PaymentState.APPROVED
+            );
+            case CONFIRM_FAILED -> require(
+                    current,
+                    PaymentState.CONFIRMING,
+                    event,
+                    PaymentState.FAILED
+            );
+            case CONFIRM_UNKNOWN -> require(
+                    current,
+                    PaymentState.CONFIRMING,
+                    event,
+                    PaymentState.PENDING_CONFIRMATION
+            );
         };
     }
 

@@ -7,22 +7,19 @@ import io.hoony.payment.application.port.out.PaymentRepository;
 import io.hoony.payment.domain.attempt.PaymentAttempt;
 import io.hoony.payment.domain.attempt.PaymentAttemptResult;
 import io.hoony.payment.domain.attempt.PaymentOperation;
-import io.hoony.payment.domain.common.DomainException;
+import io.hoony.payment.domain.common.ResourceConflictException;
+import io.hoony.payment.domain.idempotency.IdempotencyOperation;
 import io.hoony.payment.domain.idempotency.IdempotencyRecord;
+import io.hoony.payment.domain.idempotency.IdempotencyScope;
 import io.hoony.payment.domain.payment.Payment;
 import io.hoony.payment.domain.payment.PaymentEvent;
-import io.hoony.payment.infrastructure.pg.PgApproveRequest;
-import io.hoony.payment.infrastructure.pg.PgApproveResult;
-import io.hoony.payment.infrastructure.pg.PgApproveStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Orchestrates idempotent payment approval processing.
- */
 @Service
 public class ApprovePaymentService {
 
@@ -36,9 +33,6 @@ public class ApprovePaymentService {
     private final Object[] idempotencyLocks = createLocks();
     private final Object[] orderLocks = createLocks();
 
-    /**
-     * Creates the approval service.
-     */
     public ApprovePaymentService(
             IdempotencyRecordRepository idempotencyRecords,
             PaymentRepository payments,
@@ -53,36 +47,43 @@ public class ApprovePaymentService {
         this.clock = clock;
     }
 
-    /**
-     * Approves a payment once for the same idempotency key and fingerprint.
-     */
     public ApprovePaymentResult approve(ApprovePaymentCommand command) {
         String fingerprint = ApprovalRequestFingerprint.from(command);
-        Object idempotencyLock = lockFor(idempotencyLocks, command.idempotencyKey());
+        IdempotencyScope scope = new IdempotencyScope(
+                command.merchantId(),
+                IdempotencyOperation.APPROVE,
+                command.idempotencyKey()
+        );
+        Object idempotencyLock = lockFor(idempotencyLocks, scope);
         Object orderLock = lockFor(orderLocks, orderKey(command));
+
         synchronized (idempotencyLock) {
             synchronized (orderLock) {
-                return approveInsideGate(command, fingerprint);
+                return approveInsideGate(command, scope, fingerprint);
             }
         }
     }
 
-    private ApprovePaymentResult approveInsideGate(ApprovePaymentCommand command, String fingerprint) {
-        IdempotencyRecord record = idempotencyRecords.findByKey(command.idempotencyKey())
-                .map(existing -> {
-                    existing.requireSameFingerprint(fingerprint);
-                    return existing;
-                })
-                .orElseGet(() -> IdempotencyRecord.start(command.idempotencyKey(), fingerprint, now()));
-
-        if (record.responseBody().isPresent()) {
-            return ApprovePaymentResult.fromStoredResponse(record.responseBody().orElseThrow());
+    private ApprovePaymentResult approveInsideGate(
+            ApprovePaymentCommand command,
+            IdempotencyScope scope,
+            String fingerprint
+    ) {
+        Optional<IdempotencyRecord> existingRecord = idempotencyRecords.findByScope(scope);
+        if (existingRecord.isPresent()) {
+            IdempotencyRecord record = existingRecord.orElseThrow();
+            record.requireSameFingerprint(fingerprint);
+            return record.responseBody()
+                    .map(ApprovePaymentResult::fromStoredResponse)
+                    .orElseThrow(() -> new ResourceConflictException("Payment approval is still processing."));
         }
+
         payments.findByMerchantIdAndOrderId(command.merchantId(), command.orderId())
                 .ifPresent(existing -> {
-                    throw new DomainException("Payment already exists for merchant order.");
+                    throw new ResourceConflictException("Payment already exists for merchant order.");
                 });
 
+        IdempotencyRecord record = IdempotencyRecord.start(scope, fingerprint, now());
         Payment payment = Payment.request(
                 UUID.randomUUID(),
                 command.userId(),
@@ -94,25 +95,27 @@ public class ApprovePaymentService {
         payments.save(payment);
         idempotencyRecords.save(record);
 
-        PgApproveResult pgResult = paymentGateway.approve(new PgApproveRequest(
-                payment.id(),
-                command.merchantId(),
-                command.orderId(),
-                command.amount()
-        ));
+        PaymentGateway.ApprovalResult gatewayResult = paymentGateway.approve(
+                new PaymentGateway.ApprovalRequest(
+                        payment.id(),
+                        command.merchantId(),
+                        command.orderId(),
+                        command.amount()
+                )
+        );
         paymentAttempts.save(new PaymentAttempt(
                 UUID.randomUUID(),
                 payment.id(),
                 null,
                 PaymentOperation.APPROVE,
-                toAttemptResult(pgResult.status()),
+                toAttemptResult(gatewayResult.status()),
                 now()
         ));
 
-        if (pgResult.status() == PgApproveStatus.APPROVED) {
-            payment.apply(PaymentEvent.APPROVE_SUCCEEDED);
-        } else {
-            payment.apply(PaymentEvent.APPROVE_FAILED);
+        switch (gatewayResult.status()) {
+            case APPROVED -> payment.apply(PaymentEvent.APPROVE_SUCCEEDED);
+            case DECLINED -> payment.apply(PaymentEvent.APPROVE_FAILED);
+            case TIMED_OUT -> payment.apply(PaymentEvent.APPROVE_TIMED_OUT);
         }
         payments.save(payment);
 
@@ -122,10 +125,11 @@ public class ApprovePaymentService {
         return result;
     }
 
-    private PaymentAttemptResult toAttemptResult(PgApproveStatus status) {
+    private PaymentAttemptResult toAttemptResult(PaymentGateway.ApprovalStatus status) {
         return switch (status) {
             case APPROVED -> PaymentAttemptResult.SUCCEEDED;
             case DECLINED -> PaymentAttemptResult.FAILED;
+            case TIMED_OUT -> PaymentAttemptResult.TIMED_OUT;
         };
     }
 
@@ -141,7 +145,7 @@ public class ApprovePaymentService {
         return locks;
     }
 
-    private static Object lockFor(Object[] locks, String key) {
+    private static Object lockFor(Object[] locks, Object key) {
         return locks[Math.floorMod(key.hashCode(), locks.length)];
     }
 
