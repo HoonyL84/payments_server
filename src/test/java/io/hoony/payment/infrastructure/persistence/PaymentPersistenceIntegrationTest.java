@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @ActiveProfiles("integration")
 @SpringBootTest
 @Import(PaymentPersistenceIntegrationTest.GatewayTestConfiguration.class)
