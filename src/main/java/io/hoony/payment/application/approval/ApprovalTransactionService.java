@@ -265,7 +265,12 @@ public class ApprovalTransactionService {
             default -> throw new DomainException("Unsupported PG confirmation result.");
         }
 
-        attempt.complete(attemptResult, null, null, completedAt);
+        attempt.complete(
+                attemptResult,
+                gatewayResult.providerTransactionId(),
+                gatewayResult.errorCode(),
+                completedAt
+        );
         payments.save(payment);
         paymentAttempts.save(attempt);
 

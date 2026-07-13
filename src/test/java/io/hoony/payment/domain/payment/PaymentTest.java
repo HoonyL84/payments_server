@@ -54,4 +54,26 @@ class PaymentTest {
                 .isInstanceOf(DomainException.class)
                 .hasMessageContaining("exceed");
     }
+
+    @Test
+    void requireCancellationCapacity_확정금액과진행중예약금액을함께계산한다() {
+        Payment payment = Payment.request(
+                UUID.randomUUID(),
+                "user-1",
+                "merchant-1",
+                "order-1",
+                Money.positiveKrw(30_000)
+        );
+        payment.apply(PaymentEvent.APPROVE_STARTED);
+        payment.apply(PaymentEvent.APPROVE_SUCCEEDED);
+        payment.recordCanceledAmount(Money.positiveKrw(10_000));
+
+        payment.requireCancellationCapacity(Money.positiveKrw(10_000), Money.positiveKrw(10_000));
+
+        assertThatThrownBy(() -> payment.requireCancellationCapacity(
+                Money.positiveKrw(11_000),
+                Money.positiveKrw(10_000)
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("exceeds");
+    }
 }

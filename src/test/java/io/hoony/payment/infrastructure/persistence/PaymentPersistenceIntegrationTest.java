@@ -6,8 +6,16 @@ import io.hoony.payment.application.approval.ApprovalTransactionService;
 import io.hoony.payment.application.approval.ApprovePaymentCommand;
 import io.hoony.payment.application.approval.ApprovePaymentResult;
 import io.hoony.payment.application.approval.ApprovePaymentService;
+import io.hoony.payment.application.cancellation.CancelPaymentCommand;
+import io.hoony.payment.application.cancellation.CancelPaymentResult;
+import io.hoony.payment.application.cancellation.CancelPaymentService;
+import io.hoony.payment.application.cancellation.CancellationConfirmationPreparation;
+import io.hoony.payment.application.cancellation.CancellationPreparation;
+import io.hoony.payment.application.cancellation.CancellationRequestFingerprint;
+import io.hoony.payment.application.cancellation.CancellationTransactionService;
 import io.hoony.payment.application.ledger.LedgerConsistencyService;
 import io.hoony.payment.application.confirmation.ConfirmationPreparation;
+import io.hoony.payment.application.port.out.CancellationRepository;
 import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
 import io.hoony.payment.application.port.out.LedgerEntryRepository;
 import io.hoony.payment.application.port.out.OutboxEventRepository;
@@ -15,6 +23,8 @@ import io.hoony.payment.application.port.out.PaymentAttemptRepository;
 import io.hoony.payment.application.port.out.PaymentGateway;
 import io.hoony.payment.application.port.out.PaymentRepository;
 import io.hoony.payment.domain.attempt.PaymentAttemptResult;
+import io.hoony.payment.domain.cancellation.CancellationState;
+import io.hoony.payment.domain.common.DomainException;
 import io.hoony.payment.domain.common.ResourceConflictException;
 import io.hoony.payment.domain.idempotency.IdempotencyOperation;
 import io.hoony.payment.domain.idempotency.IdempotencyScope;
@@ -84,6 +94,15 @@ class PaymentPersistenceIntegrationTest {
     private PaymentRepository payments;
 
     @Autowired
+    private CancelPaymentService cancelPaymentService;
+
+    @Autowired
+    private CancellationTransactionService cancellationTransactions;
+
+    @Autowired
+    private CancellationRepository cancellations;
+
+    @Autowired
     private PaymentAttemptRepository attempts;
 
     @Autowired
@@ -110,6 +129,7 @@ class PaymentPersistenceIntegrationTest {
         jdbcTemplate.update("DELETE FROM ledger_entries");
         jdbcTemplate.update("DELETE FROM payment_attempts");
         jdbcTemplate.update("DELETE FROM idempotency_records");
+        jdbcTemplate.update("DELETE FROM payment_cancellations");
         jdbcTemplate.update("DELETE FROM payments");
         gateway.reset();
     }
@@ -273,7 +293,7 @@ class PaymentPersistenceIntegrationTest {
 
         transactions.completeConfirmation(
                 claimed,
-                PaymentGateway.ConfirmationResult.approved()
+                PaymentGateway.ConfirmationResult.approved("pg-confirmed-txn")
         );
 
         assertThat(payments.findById(approval.payment().id()).orElseThrow().state())
@@ -287,6 +307,300 @@ class PaymentPersistenceIntegrationTest {
                         OutboxEventType.PAYMENT_PENDING_CONFIRMATION,
                         OutboxEventType.PAYMENT_APPROVED
                 );
+    }
+    @Test
+    void cancel_성공결과를_누적금액_역분개원장_outbox와함께저장한다() {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-approval-key-1",
+                "cancel-order-1"
+        ));
+
+        CancelPaymentResult result = cancelPaymentService.cancel(cancelCommand(
+                "cancel-key-1",
+                approval.paymentId(),
+                10_000
+        ));
+
+        assertThat(result.state()).isEqualTo(CancellationState.CANCELED);
+        assertThat(result.reused()).isFalse();
+        assertThat(gateway.cancelCallCount()).isEqualTo(1);
+        assertThat(gateway.transactionActiveDuringCancel()).isFalse();
+        assertThat(gateway.lastOriginalProviderTransactionId()).startsWith("pg-txn-");
+        assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                .isEqualTo(Money.krw(10_000));
+        assertThat(cancellations.findAll()).singleElement().satisfies(cancellation -> {
+            assertThat(cancellation.id()).isEqualTo(result.cancellationId());
+            assertThat(cancellation.state()).isEqualTo(CancellationState.CANCELED);
+        });
+        assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                .hasSize(2);
+        assertThat(ledgerConsistencyService.findDrifts()).isEmpty();
+        assertThat(outboxEvents.findAll())
+                .extracting(event -> event.type())
+                .contains(OutboxEventType.PAYMENT_APPROVED, OutboxEventType.PAYMENT_CANCELED);
+    }
+
+    @Test
+    void cancel_후처리트랜잭션이실패하면_누적금액과취소상태가부분반영되지않는다() {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-rollback-approval-key",
+                "cancel-rollback-order"
+        ));
+        CancelPaymentCommand command = cancelCommand(
+                "cancel-rollback-key",
+                approval.paymentId(),
+                10_000
+        );
+        CancellationPreparation preparation = cancellationTransactions.prepare(
+                command,
+                CancellationRequestFingerprint.from(command)
+        );
+
+        UUID groupId = deterministicId("cancellation-group:" + preparation.cancellation().id());
+        ledgerEntries.saveAll(List.of(new LedgerEntry(
+                UUID.randomUUID(),
+                groupId,
+                approval.paymentId(),
+                preparation.cancellation().id(),
+                LedgerEntryType.CANCELLATION,
+                LedgerAccount.MERCHANT_PAYABLE,
+                LedgerDirection.DEBIT,
+                command.amount(),
+                Instant.now()
+        )));
+
+        assertThatThrownBy(() -> cancellationTransactions.complete(
+                preparation,
+                PaymentGateway.CancellationResult.canceled("cancel-rollback-txn")
+        )).isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                .isEqualTo(Money.krw(0));
+        assertThat(cancellations.findById(preparation.cancellation().id()).orElseThrow().state())
+                .isEqualTo(CancellationState.CANCELING);
+        assertThat(attempts.findById(preparation.attempt().id()).orElseThrow().result())
+                .isEqualTo(PaymentAttemptResult.PROCESSING);
+        assertThat(idempotencyRecords.findByScope(preparation.scope()).orElseThrow().responseBody())
+                .isEmpty();
+        assertThat(outboxEvents.findAll())
+                .extracting(event -> event.type())
+                .doesNotContain(OutboxEventType.PAYMENT_CANCELED);
+    }
+    @Test
+    void cancel_명확한실패에는_역분개없이_실패이벤트만저장한다() {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-declined-approval-key",
+                "cancel-declined-order"
+        ));
+        gateway.nextCancellationStatus(PaymentGateway.CancellationStatus.DECLINED);
+
+        CancelPaymentResult result = cancelPaymentService.cancel(cancelCommand(
+                "cancel-declined-key",
+                approval.paymentId(),
+                10_000
+        ));
+
+        assertThat(result.state()).isEqualTo(CancellationState.CANCEL_FAILED);
+        assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                .isEqualTo(Money.krw(0));
+        assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                .isEmpty();
+        assertThat(outboxEvents.findAll())
+                .extracting(event -> event.type())
+                .contains(OutboxEventType.PAYMENT_CANCEL_FAILED);
+    }
+    @Test
+    void cancel_동일멱등키는_기존응답을재사용하고_pg를다시호출하지않는다() {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-approval-key-2",
+                "cancel-order-2"
+        ));
+        CancelPaymentCommand command = cancelCommand("cancel-key-2", approval.paymentId(), 10_000);
+
+        CancelPaymentResult first = cancelPaymentService.cancel(command);
+        CancelPaymentResult replay = cancelPaymentService.cancel(command);
+
+        assertThat(replay.cancellationId()).isEqualTo(first.cancellationId());
+        assertThat(replay.reused()).isTrue();
+        assertThat(gateway.cancelCallCount()).isEqualTo(1);
+        assertThatThrownBy(() -> cancelPaymentService.cancel(cancelCommand(
+                "cancel-key-2",
+                approval.paymentId(),
+                20_000
+        ))).isInstanceOf(ResourceConflictException.class);
+    }
+
+    @Test
+    void cancel_동일멱등키를동시에보내도_pg호출과역분개는하나로수렴한다() throws Exception {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-same-key-approval",
+                "cancel-same-key-order"
+        ));
+        CancelPaymentCommand command = cancelCommand(
+                "cancel-same-concurrent-key",
+                approval.paymentId(),
+                10_000
+        );
+        var executor = Executors.newFixedThreadPool(20);
+
+        try {
+            var futures = java.util.stream.IntStream.range(0, 20)
+                    .mapToObj(ignored -> executor.submit(() -> cancelAttempt(command)))
+                    .toList();
+            List<Object> outcomes = futures.stream().map(future -> {
+                try {
+                    return future.get(10, TimeUnit.SECONDS);
+                } catch (Exception exception) {
+                    throw new AssertionError(exception);
+                }
+            }).toList();
+
+            assertThat(outcomes).anySatisfy(
+                    outcome -> assertThat(outcome).isInstanceOf(CancelPaymentResult.class)
+            );
+            assertThat(outcomes).allSatisfy(outcome -> assertThat(outcome)
+                    .isInstanceOfAny(CancelPaymentResult.class, ResourceConflictException.class));
+            assertThat(gateway.cancelCallCount()).isEqualTo(1);
+            assertThat(cancellations.findAll()).hasSize(1);
+            assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                    .isEqualTo(Money.krw(10_000));
+            assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                    .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                    .hasSize(2);
+            assertThat(outboxEvents.findAll())
+                    .filteredOn(event -> event.type() == OutboxEventType.PAYMENT_CANCELED)
+                    .hasSize(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+    @Test
+    void cancel_동시부분취소는_승인금액을초과하지않는다() throws Exception {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-approval-key-3",
+                "cancel-order-3"
+        ));
+        var executor = Executors.newFixedThreadPool(2);
+
+        try {
+            var futures = List.of(
+                    executor.submit(() -> cancelAttempt(cancelCommand(
+                            "cancel-concurrent-key-1",
+                            approval.paymentId(),
+                            20_000
+                    ))),
+                    executor.submit(() -> cancelAttempt(cancelCommand(
+                            "cancel-concurrent-key-2",
+                            approval.paymentId(),
+                            20_000
+                    )))
+            );
+            List<Object> outcomes = futures.stream().map(future -> {
+                try {
+                    return future.get(10, TimeUnit.SECONDS);
+                } catch (Exception exception) {
+                    throw new AssertionError(exception);
+                }
+            }).toList();
+
+            assertThat(outcomes).filteredOn(CancelPaymentResult.class::isInstance).hasSize(1);
+            assertThat(outcomes).filteredOn(DomainException.class::isInstance).hasSize(1);
+            assertThat(gateway.cancelCallCount()).isEqualTo(1);
+            assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                    .isEqualTo(Money.krw(20_000));
+            assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                    .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                    .hasSize(2);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void cancel_timeout은_confirm_한요청만선점하고_확정후역분개한다() throws Exception {
+        ApprovePaymentResult approval = approvePaymentService.approve(command(
+                "cancel-approval-key-4",
+                "cancel-order-4"
+        ));
+        gateway.nextCancellationStatus(PaymentGateway.CancellationStatus.TIMED_OUT);
+        CancelPaymentResult pending = cancelPaymentService.cancel(cancelCommand(
+                "cancel-key-4",
+                approval.paymentId(),
+                10_000
+        ));
+
+        assertThat(pending.state()).isEqualTo(CancellationState.CANCEL_PENDING_CONFIRMATION);
+        assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                .isEqualTo(Money.krw(0));
+        assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                .isEmpty();
+        assertThat(outboxEvents.findAll())
+                .extracting(event -> event.type())
+                .contains(OutboxEventType.PAYMENT_CANCEL_PENDING_CONFIRMATION);
+
+        var executor = Executors.newFixedThreadPool(10);
+        CancellationConfirmationPreparation claimed;
+        try {
+            var futures = java.util.stream.IntStream.range(0, 10)
+                    .mapToObj(ignored -> executor.submit(() -> {
+                        try {
+                            return cancellationTransactions.prepareConfirmation(
+                                    approval.paymentId(),
+                                    pending.cancellationId()
+                            );
+                        } catch (ResourceConflictException exception) {
+                            return null;
+                        }
+                    }))
+                    .toList();
+            List<CancellationConfirmationPreparation> claims = futures.stream()
+                    .map(future -> {
+                        try {
+                            return future.get(10, TimeUnit.SECONDS);
+                        } catch (Exception exception) {
+                            throw new AssertionError(exception);
+                        }
+                    })
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            assertThat(claims).hasSize(1);
+            claimed = claims.getFirst();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        cancellationTransactions.completeConfirmation(
+                claimed,
+                PaymentGateway.CancellationConfirmationResult.canceled("confirmed-cancel-txn")
+        );
+
+        assertThat(cancellations.findById(pending.cancellationId()).orElseThrow().state())
+                .isEqualTo(CancellationState.CANCELED);
+        assertThat(payments.findById(approval.paymentId()).orElseThrow().canceledAmount())
+                .isEqualTo(Money.krw(10_000));
+        assertThat(ledgerEntries.findByPaymentId(approval.paymentId()))
+                .filteredOn(entry -> entry.type() == LedgerEntryType.CANCELLATION)
+                .hasSize(2);
+        assertThat(ledgerConsistencyService.findDrifts()).isEmpty();
+    }
+
+    private Object cancelAttempt(CancelPaymentCommand command) {
+        try {
+            return cancelPaymentService.cancel(command);
+        } catch (DomainException exception) {
+            return exception;
+        }
+    }
+
+    private static CancelPaymentCommand cancelCommand(
+            String key,
+            UUID paymentId,
+            long amountMinorUnits
+    ) {
+        return new CancelPaymentCommand(key, paymentId, Money.positiveKrw(amountMinorUnits));
     }
     private static ApprovePaymentCommand command(String key, String orderId) {
         return new ApprovePaymentCommand(
@@ -323,7 +637,14 @@ class PaymentPersistenceIntegrationTest {
     static final class CheckingPaymentGateway implements PaymentGateway {
 
         private final AtomicInteger approveCallCount = new AtomicInteger();
+        private final AtomicInteger cancelCallCount = new AtomicInteger();
+        private final AtomicInteger confirmCancelCallCount = new AtomicInteger();
         private final AtomicBoolean transactionActiveDuringApprove = new AtomicBoolean();
+        private final AtomicBoolean transactionActiveDuringCancel = new AtomicBoolean();
+        private volatile CancellationStatus nextCancellationStatus = CancellationStatus.CANCELED;
+        private volatile String lastOriginalProviderTransactionId;
+        private volatile CancellationConfirmationStatus nextCancellationConfirmationStatus =
+                CancellationConfirmationStatus.CANCELED;
 
         @Override
         public ApprovalResult approve(ApprovalRequest request) {
@@ -336,9 +657,58 @@ class PaymentPersistenceIntegrationTest {
 
         @Override
         public ConfirmationResult confirmApprove(ConfirmationRequest request) {
-            return ConfirmationResult.approved();
+            return ConfirmationResult.approved("pg-confirmed-txn-" + request.providerRequestId());
         }
 
+        @Override
+        public CancellationResult cancel(CancellationRequest request) {
+            cancelCallCount.incrementAndGet();
+            lastOriginalProviderTransactionId = request.originalProviderTransactionId();
+            transactionActiveDuringCancel.set(
+                    TransactionSynchronizationManager.isActualTransactionActive()
+            );
+            return switch (nextCancellationStatus) {
+                case CANCELED -> CancellationResult.canceled(
+                        "pg-cancel-txn-" + request.providerRequestId()
+                );
+                case DECLINED -> CancellationResult.declined("DECLINED");
+                case TIMED_OUT -> CancellationResult.timedOut();
+            };
+        }
+
+        @Override
+        public CancellationConfirmationResult confirmCancel(CancellationConfirmationRequest request) {
+            confirmCancelCallCount.incrementAndGet();
+            return switch (nextCancellationConfirmationStatus) {
+                case CANCELED -> CancellationConfirmationResult.canceled(
+                        "pg-confirmed-cancel-txn-" + request.providerRequestId()
+                );
+                case DECLINED -> CancellationConfirmationResult.declined("DECLINED");
+                case UNKNOWN -> CancellationConfirmationResult.unknown();
+            };
+        }
+        int cancelCallCount() {
+            return cancelCallCount.get();
+        }
+
+        int confirmCancelCallCount() {
+            return confirmCancelCallCount.get();
+        }
+
+        String lastOriginalProviderTransactionId() {
+            return lastOriginalProviderTransactionId;
+        }
+        boolean transactionActiveDuringCancel() {
+            return transactionActiveDuringCancel.get();
+        }
+
+        void nextCancellationStatus(CancellationStatus status) {
+            nextCancellationStatus = status;
+        }
+
+        void nextCancellationConfirmationStatus(CancellationConfirmationStatus status) {
+            nextCancellationConfirmationStatus = status;
+        }
         int approveCallCount() {
             return approveCallCount.get();
         }
@@ -349,7 +719,13 @@ class PaymentPersistenceIntegrationTest {
 
         void reset() {
             approveCallCount.set(0);
+            cancelCallCount.set(0);
+            confirmCancelCallCount.set(0);
             transactionActiveDuringApprove.set(false);
+            transactionActiveDuringCancel.set(false);
+            nextCancellationStatus = CancellationStatus.CANCELED;
+            nextCancellationConfirmationStatus = CancellationConfirmationStatus.CANCELED;
+            lastOriginalProviderTransactionId = null;
         }
     }
 }

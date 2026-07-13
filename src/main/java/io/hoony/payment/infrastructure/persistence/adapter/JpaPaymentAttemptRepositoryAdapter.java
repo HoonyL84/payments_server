@@ -2,6 +2,8 @@ package io.hoony.payment.infrastructure.persistence.adapter;
 
 import io.hoony.payment.application.port.out.PaymentAttemptRepository;
 import io.hoony.payment.domain.attempt.PaymentAttempt;
+import io.hoony.payment.domain.attempt.PaymentAttemptResult;
+import io.hoony.payment.domain.attempt.PaymentOperation;
 import io.hoony.payment.infrastructure.persistence.entity.PaymentAttemptEntity;
 import io.hoony.payment.infrastructure.persistence.repository.JpaPaymentAttemptEntityRepository;
 import org.springframework.context.annotation.Profile;
@@ -34,6 +36,14 @@ public class JpaPaymentAttemptRepositoryAdapter implements PaymentAttemptReposit
         return repository.findById(id.toString()).map(PaymentAttemptEntity::toDomain);
     }
 
+    @Override
+    public Optional<PaymentAttempt> findLatestSuccessful(UUID paymentId, PaymentOperation operation) {
+        return repository.findFirstByPaymentIdAndOperationAndResultOrderByCompletedAtDesc(
+                paymentId.toString(),
+                operation,
+                PaymentAttemptResult.SUCCEEDED
+        ).map(PaymentAttemptEntity::toDomain);
+    }
     @Override
     public List<PaymentAttempt> findAll() {
         return repository.findAll().stream().map(PaymentAttemptEntity::toDomain).toList();

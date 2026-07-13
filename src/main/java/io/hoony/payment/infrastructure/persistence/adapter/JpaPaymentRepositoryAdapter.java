@@ -46,6 +46,10 @@ public class JpaPaymentRepositoryAdapter implements PaymentRepository {
     }
 
     @Override
+    public Optional<Payment> findByIdForUpdate(UUID id) {
+        return repository.findByIdForUpdate(id.toString()).map(PaymentEntity::toDomain);
+    }
+    @Override
     public Optional<Payment> findByMerchantIdAndOrderId(String merchantId, String orderId) {
         return repository.findByMerchantIdAndOrderId(merchantId, orderId)
                 .map(PaymentEntity::toDomain);

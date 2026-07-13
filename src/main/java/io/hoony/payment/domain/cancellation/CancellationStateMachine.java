@@ -2,31 +2,15 @@ package io.hoony.payment.domain.cancellation;
 
 import io.hoony.payment.domain.payment.InvalidStateTransitionException;
 
-/**
- * Directed state graph for payment cancellation.
- */
 public final class CancellationStateMachine {
 
     private CancellationStateMachine() {
     }
 
-    /**
-     * Applies a cancellation event to the current state.
-     */
     public static CancellationState transition(CancellationState current, CancellationEvent event) {
         return switch (event) {
-            case CANCEL_STARTED -> require(
-                    current,
-                    CancellationState.CANCEL_REQUESTED,
-                    event,
-                    CancellationState.CANCELING
-            );
-            case CANCEL_SUCCEEDED -> require(
-                    current,
-                    CancellationState.CANCELING,
-                    event,
-                    CancellationState.CANCELED
-            );
+            case CANCEL_STARTED -> require(current, CancellationState.CANCEL_REQUESTED, event, CancellationState.CANCELING);
+            case CANCEL_SUCCEEDED -> require(current, CancellationState.CANCELING, event, CancellationState.CANCELED);
             case CANCEL_FAILED -> requireAny(
                     current,
                     event,
@@ -40,17 +24,29 @@ public final class CancellationStateMachine {
                     event,
                     CancellationState.CANCEL_PENDING_CONFIRMATION
             );
-            case CONFIRM_CANCELED -> require(
+            case CONFIRM_CANCEL_STARTED -> require(
                     current,
                     CancellationState.CANCEL_PENDING_CONFIRMATION,
+                    event,
+                    CancellationState.CANCEL_CONFIRMING
+            );
+            case CONFIRM_CANCELED -> require(
+                    current,
+                    CancellationState.CANCEL_CONFIRMING,
                     event,
                     CancellationState.CANCELED
             );
             case CONFIRM_CANCEL_FAILED -> require(
                     current,
-                    CancellationState.CANCEL_PENDING_CONFIRMATION,
+                    CancellationState.CANCEL_CONFIRMING,
                     event,
                     CancellationState.CANCEL_FAILED
+            );
+            case CONFIRM_CANCEL_UNKNOWN -> require(
+                    current,
+                    CancellationState.CANCEL_CONFIRMING,
+                    event,
+                    CancellationState.CANCEL_PENDING_CONFIRMATION
             );
         };
     }

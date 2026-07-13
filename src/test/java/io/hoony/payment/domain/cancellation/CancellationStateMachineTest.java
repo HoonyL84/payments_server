@@ -38,6 +38,20 @@ class CancellationStateMachineTest {
     }
 
     @Test
+    void transition_confirm은_선점상태를거쳐_pending으로돌아갈수있다() {
+        CancellationState confirming = CancellationStateMachine.transition(
+                CancellationState.CANCEL_PENDING_CONFIRMATION,
+                CancellationEvent.CONFIRM_CANCEL_STARTED
+        );
+        CancellationState pending = CancellationStateMachine.transition(
+                confirming,
+                CancellationEvent.CONFIRM_CANCEL_UNKNOWN
+        );
+
+        assertThat(confirming).isEqualTo(CancellationState.CANCEL_CONFIRMING);
+        assertThat(pending).isEqualTo(CancellationState.CANCEL_PENDING_CONFIRMATION);
+    }
+    @Test
     void transition_취소_최종상태에서_다시_시작할_수_없다() {
         assertThatThrownBy(() -> CancellationStateMachine.transition(
                 CancellationState.CANCELED,

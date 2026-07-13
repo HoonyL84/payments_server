@@ -1,26 +1,22 @@
 package io.hoony.payment.domain.cancellation;
 
-/**
- * Payment cancellation lifecycle state.
- */
 public enum CancellationState {
     CANCEL_REQUESTED,
     CANCELING,
     CANCEL_PENDING_CONFIRMATION,
+    CANCEL_CONFIRMING,
     CANCELED,
     CANCEL_FAILED;
 
-    /**
-     * Returns whether this cancellation waits for PG confirmation.
-     */
     public boolean requiresConfirmation() {
         return this == CANCEL_PENDING_CONFIRMATION;
     }
 
-    /**
-     * Returns whether this cancellation lifecycle is final.
-     */
     public boolean isTerminal() {
         return this == CANCELED || this == CANCEL_FAILED;
+    }
+
+    public boolean reservesAmount() {
+        return this == CANCELING || this == CANCEL_PENDING_CONFIRMATION || this == CANCEL_CONFIRMING;
     }
 }

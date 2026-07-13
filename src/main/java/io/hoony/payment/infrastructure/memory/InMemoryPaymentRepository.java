@@ -30,6 +30,10 @@ public class InMemoryPaymentRepository implements PaymentRepository {
     }
 
     @Override
+    public Optional<Payment> findByIdForUpdate(UUID id) {
+        return findById(id);
+    }
+    @Override
     public Optional<Payment> findByMerchantIdAndOrderId(String merchantId, String orderId) {
         UUID paymentId = paymentIdsByOrder.get(orderKey(merchantId, orderId));
         if (paymentId == null) {

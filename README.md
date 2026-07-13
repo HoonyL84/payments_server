@@ -4,7 +4,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 커머스 전체를 구현하는 것이 아니라, 결제 승인/취소 과정에서 발생하는 중복 요청, PG timeout unknown, 상태 전이, 원장 정합성, outbox, 복구 흐름을 검증하는 것이 목표입니다.
 
 아직 모든 기능이 구현된 상태는 아닙니다.
-현재는 프로젝트 목표와 경계를 정리하고, 결제 상태 모델, 멱등 승인과 PG timeout 수렴 흐름, MySQL 영속화, 원장과 트랜잭셔널 아웃박스까지 구현한 단계입니다.
+현재는 프로젝트 목표와 경계를 정리하고, 결제 상태 모델, 멱등 승인과 PG timeout 수렴 흐름, MySQL 영속화, 원장과 트랜잭셔널 아웃박스, 취소 생명주기까지 구현한 단계입니다.
 
 ## 목표
 
@@ -30,6 +30,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [5. 결제 승인은 API보다 중복 호출 방지가 먼저다](https://velog.io/@hoonyl/5.-%EA%B2%B0%EC%A0%9C-%EC%8A%B9%EC%9D%B8%EC%9D%80-API%EB%B3%B4%EB%8B%A4-%EC%A4%91%EB%B3%B5-%ED%98%B8%EC%B6%9C-%EB%B0%A9%EC%A7%80%EA%B0%80-%EB%A8%BC%EC%A0%80%EB%8B%A4)
 - [6. PG timeout은 실패가 아니라 확인이 필요한 상태다](https://velog.io/@hoonyl/6.-PG-timeout%EC%9D%80-%EC%8B%A4%ED%8C%A8%EA%B0%80-%EC%95%84%EB%8B%88%EB%9D%BC-%ED%99%95%EC%9D%B8%EC%9D%B4-%ED%95%84%EC%9A%94%ED%95%9C-%EC%83%81%ED%83%9C%EB%8B%A4)
 - [7. PG 호출을 DB 트랜잭션 밖으로 분리한 이유](https://velog.io/@hoonyl/7.-PG-%ED%98%B8%EC%B6%9C%EC%9D%84-DB-%ED%8A%B8%EB%9E%9C%EC%9E%AD%EC%85%98-%EB%B0%96%EC%9C%BC%EB%A1%9C-%EB%B6%84%EB%A6%AC%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+- [8. 취소 금액을 PG 응답 전에 예약한 이유](https://velog.io/@hoonyl/8.-%EC%B7%A8%EC%86%8C-%EA%B8%88%EC%95%A1%EC%9D%84-PG-%EC%9D%91%EB%8B%B5-%EC%A0%84%EC%97%90-%EC%98%88%EC%95%BD%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 
 ## 테스트 데이터 정책
 
@@ -37,7 +38,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 그래서 테스트 데이터는 두 종류로 나눕니다.
 
 - 유지되는 DB seed data: `merchants`와 PG routing 설정
-- 유지되는 k6 입력 fixture: user와 payment method 식별자
+- k6 요청 입력: userId는 요청마다 생성하며, 현재 승인 요청에 payment method는 포함하지 않음
 - 실행마다 초기화되는 payment data: `payments`, `payment_attempts`, `idempotency_records`, `ledger_entries`, `outbox_events`, `payment_cancellations`
 - 실행마다 초기화되는 fake PG 상태: `pg_test_balances`
 
@@ -72,7 +73,7 @@ src/main/java/io/hoony/payment/
     └── payment/
 ```
 
-현재 존재하는 코드는 Spring Boot 애플리케이션, health endpoint, 공통 error response, trace id filter, 결제 상태 모델, 멱등 승인 API 흐름, PG timeout 이후 confirm 흐름, JPA 저장소와 Flyway 스키마입니다.
+현재 존재하는 코드는 Spring Boot 애플리케이션, health endpoint, 공통 error response, trace id filter, 결제 상태 모델, 멱등 승인·취소 API 흐름, PG timeout 이후 confirm 흐름, JPA 저장소와 Flyway 스키마입니다.
 
 도메인 모델은 결제 승인과 취소를 CRUD가 아니라 상태 전이로 다룹니다.
 금액은 정수 minor unit으로 처리하고, 결제 생성 이후 승인 금액은 변경하지 않습니다.
@@ -80,6 +81,8 @@ src/main/java/io/hoony/payment/
 PG 승인 timeout은 실패로 닫지 않고 `PENDING_CONFIRMATION`으로 보관합니다. confirm 요청은 `CONFIRMING`을 먼저 차지한 뒤 `APPROVED`, `FAILED`, `PENDING_CONFIRMATION` 중 하나로 수렴합니다.
 
 PG 호출은 DB 트랜잭션 밖에서 실행합니다. PG 호출 전 준비 상태를 저장하고, 결과를 받은 뒤 payment, attempt, 멱등 응답, 차변·대변 원장과 outbox event를 하나의 DB 트랜잭션으로 확정합니다. 현재 outbox publisher는 로컬 로그 구현이며 Kafka 연동과 자동 재처리는 아직 포함하지 않습니다.
+
+취소는 `payment_cancellations`에 진행 상태를 먼저 저장해 취소 금액을 예약합니다. 같은 결제의 부분 취소 요청은 확정 취소액, 진행 중 예약액, 새 취소 금액의 합이 승인 금액을 넘지 않을 때만 시작합니다. 취소 성공 또는 confirm 성공 때만 누적 취소액과 역분개 원장을 확정합니다.
 
 ## 실행 준비
 

@@ -67,6 +67,21 @@ public class Payment {
         state = PaymentStateMachine.transition(state, event);
     }
 
+    public void requireCancellationCapacity(Money cancelAmount, Money inFlightAmount) {
+        if (state != PaymentState.APPROVED) {
+            throw new DomainException("Only approved payments can be canceled.");
+        }
+        Objects.requireNonNull(cancelAmount, "cancelAmount must not be null");
+        Objects.requireNonNull(inFlightAmount, "inFlightAmount must not be null");
+        cancelAmount.requirePositive();
+        amount.requireSameCurrency(cancelAmount);
+        amount.requireSameCurrency(inFlightAmount);
+
+        Money committedAndReserved = canceledAmount.plus(inFlightAmount).plus(cancelAmount);
+        if (committedAndReserved.isGreaterThan(amount)) {
+            throw new DomainException("Cancellation amount exceeds remaining approved amount.");
+        }
+    }
     public void recordCanceledAmount(Money cancelAmount) {
         if (state != PaymentState.APPROVED) {
             throw new DomainException("Only approved payments can record cancellation amount.");

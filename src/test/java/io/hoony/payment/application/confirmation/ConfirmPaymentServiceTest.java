@@ -225,5 +225,15 @@ class ConfirmPaymentServiceTest {
             }
             return delegate.confirmApprove(request);
         }
+
+        @Override
+        public CancellationResult cancel(CancellationRequest request) {
+            return delegate.cancel(request);
+        }
+
+        @Override
+        public CancellationConfirmationResult confirmCancel(CancellationConfirmationRequest request) {
+            return delegate.confirmCancel(request);
+        }
     }
 }

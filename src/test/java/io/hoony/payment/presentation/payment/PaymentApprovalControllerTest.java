@@ -2,6 +2,8 @@ package io.hoony.payment.presentation.payment;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hoony.payment.application.port.out.PaymentGateway;
+import io.hoony.payment.domain.cancellation.CancellationState;
 import io.hoony.payment.domain.payment.PaymentState;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import io.hoony.payment.infrastructure.pg.PgApproveStatus;
@@ -182,6 +184,86 @@ class PaymentApprovalControllerTest {
                 .andExpect(jsonPath("$.code", is("RESOURCE_CONFLICT")));
     }
 
+    @Test
+    void cancel_요청이유효하면_취소결과를반환하고_재요청은응답을재사용한다() throws Exception {
+        MvcResult approval = mockMvc.perform(approvalRequest(
+                        "controller-cancel-approval-key-1",
+                        "order-controller-cancel-1",
+                        30_000
+                ))
+                .andExpect(status().isOk())
+                .andReturn();
+        String paymentId = responseJson(approval).get("paymentId").asText();
+
+        MvcResult first = mockMvc.perform(cancellationRequest(
+                        paymentId,
+                        "controller-cancel-key-1",
+                        10_000
+                ))
+                .andExpect(status().isOk())
+                .andExpect(header().string(PaymentApprovalController.IDEMPOTENCY_REPLAYED_HEADER, "false"))
+                .andExpect(jsonPath("$.state", is(CancellationState.CANCELED.name())))
+                .andReturn();
+
+        mockMvc.perform(cancellationRequest(paymentId, "controller-cancel-key-1", 10_000))
+                .andExpect(status().isOk())
+                .andExpect(header().string(PaymentApprovalController.IDEMPOTENCY_REPLAYED_HEADER, "true"))
+                .andExpect(content().json(first.getResponse().getContentAsString()));
+    }
+
+    @Test
+    void cancel_timeout은_confirm으로최종상태에수렴한다() throws Exception {
+        MvcResult approval = mockMvc.perform(approvalRequest(
+                        "controller-cancel-approval-key-2",
+                        "order-controller-cancel-2",
+                        30_000
+                ))
+                .andExpect(status().isOk())
+                .andReturn();
+        String paymentId = responseJson(approval).get("paymentId").asText();
+
+        paymentGateway.nextCancellationStatus(PaymentGateway.CancellationStatus.TIMED_OUT);
+        try {
+            MvcResult cancellation = mockMvc.perform(cancellationRequest(
+                            paymentId,
+                            "controller-cancel-key-2",
+                            10_000
+                    ))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(
+                            "$.state",
+                            is(CancellationState.CANCEL_PENDING_CONFIRMATION.name())
+                    ))
+                    .andReturn();
+            String cancellationId = responseJson(cancellation).get("cancellationId").asText();
+
+            mockMvc.perform(post(
+                            "/internal/v1/payments/{paymentId}/cancellations/{cancellationId}/confirm",
+                            paymentId,
+                            cancellationId
+                    ))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.state", is(CancellationState.CANCELED.name())));
+        } finally {
+            paymentGateway.nextCancellationStatus(PaymentGateway.CancellationStatus.CANCELED);
+        }
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder cancellationRequest(
+            String paymentId,
+            String idempotencyKey,
+            long amount
+    ) {
+        return post("/api/v1/payments/{paymentId}/cancel", paymentId)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "amountMinorUnits": %d,
+                          "currency": "KRW"
+                        }
+                        """.formatted(amount));
+    }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder approvalRequest(
             String idempotencyKey,
             String orderId,
