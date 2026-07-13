@@ -1,0 +1,9 @@
+.git
+.gradle
+.idea
+.harness
+build
+docs
+node_modules
+observability
+reports

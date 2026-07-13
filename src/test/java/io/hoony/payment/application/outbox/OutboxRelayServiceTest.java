@@ -2,10 +2,14 @@ package io.hoony.payment.application.outbox;
 
 import io.hoony.payment.application.port.out.OutboxEventRepository;
 import io.hoony.payment.application.port.out.OutboxPublisher;
+import io.hoony.payment.config.OutboxRelayProperties;
+import io.hoony.payment.config.RuntimeInstanceProperties;
 import io.hoony.payment.domain.outbox.OutboxEvent;
 import io.hoony.payment.domain.outbox.OutboxEventType;
 import io.hoony.payment.domain.outbox.OutboxStatus;
 import io.hoony.payment.infrastructure.memory.InMemoryOutboxEventRepository;
+import io.hoony.payment.observability.PaymentMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -25,7 +29,14 @@ class OutboxRelayServiceTest {
         PublishedSaveFailsOnceRepository repository = new PublishedSaveFailsOnceRepository();
         RecordingPublisher publisher = new RecordingPublisher();
         Clock clock = Clock.fixed(Instant.parse("2026-07-11T00:00:00Z"), ZoneOffset.UTC);
-        OutboxRelayService service = new OutboxRelayService(repository, publisher, clock);
+        OutboxRelayService service = new OutboxRelayService(
+                repository,
+                publisher,
+                clock,
+                new RuntimeInstanceProperties("worker-one"),
+                new OutboxRelayProperties(java.time.Duration.ofSeconds(30)),
+                new PaymentMetrics(new SimpleMeterRegistry())
+        );
         UUID eventId = UUID.randomUUID();
         repository.save(OutboxEvent.pending(
                 eventId,
@@ -76,6 +87,28 @@ class OutboxRelayServiceTest {
         @Override
         public List<OutboxEvent> findPending(int limit) {
             return delegate.findPending(limit);
+        }
+
+        @Override
+        public List<OutboxEvent> claimPending(
+                String ownerId,
+                java.time.Duration leaseDuration,
+                int limit
+        ) {
+            return delegate.claimPending(ownerId, leaseDuration, limit);
+        }
+
+        @Override
+        public boolean markPublished(UUID eventId, String ownerId, Instant publishedAt) {
+            if (failPublishedSave.getAndSet(false)) {
+                throw new IllegalStateException("status update failed");
+            }
+            return delegate.markPublished(eventId, ownerId, publishedAt);
+        }
+
+        @Override
+        public boolean releaseClaim(UUID eventId, String ownerId) {
+            return delegate.releaseClaim(eventId, ownerId);
         }
 
         @Override

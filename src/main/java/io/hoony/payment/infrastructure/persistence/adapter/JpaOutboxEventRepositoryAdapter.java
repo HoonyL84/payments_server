@@ -8,9 +8,12 @@ import io.hoony.payment.infrastructure.persistence.repository.JpaOutboxEventEnti
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Profile("!test")
 @Repository
@@ -41,14 +44,42 @@ public class JpaOutboxEventRepositoryAdapter implements OutboxEventRepository {
     }
 
     @Override
+    @Transactional
+    public List<OutboxEvent> claimPending(
+            String ownerId,
+            Duration leaseDuration,
+            int limit
+    ) {
+        long leaseMicroseconds = leaseDuration.toNanos() / 1_000;
+        List<OutboxEventEntity> claimed = repository.lockClaimable(limit);
+        claimed.forEach(entity -> {
+            if (repository.claim(entity.id(), ownerId, leaseMicroseconds) != 1) {
+                throw new IllegalStateException("Outbox claim was lost before commit.");
+            }
+        });
+        return claimed.stream().map(OutboxEventEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public boolean markPublished(UUID eventId, String ownerId, Instant publishedAt) {
+        return repository.markPublished(eventId.toString(), ownerId, publishedAt) == 1;
+    }
+
+    @Override
+    @Transactional
+    public boolean releaseClaim(UUID eventId, String ownerId) {
+        return repository.releaseClaim(eventId.toString(), ownerId) == 1;
+    }
+
+    @Override
     public List<OutboxEvent> findAll() {
         return repository.findAll().stream().map(OutboxEventEntity::toDomain).toList();
     }
 
     @Override
     public List<OutboxEvent> findPendingBefore(Instant createdBefore, int limit) {
-        return repository.findByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(
-                        OutboxStatus.PENDING, createdBefore, PageRequest.of(0, limit))
+        return repository.findClaimablePendingBefore(createdBefore, limit)
                 .stream()
                 .map(OutboxEventEntity::toDomain)
                 .toList();

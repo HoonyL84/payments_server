@@ -57,6 +57,16 @@ public class PaymentMetrics {
         counter("payments.outbox.publish", "outcome", "failed").increment();
     }
 
+    public void outboxClaimed(int count) {
+        if (count > 0) {
+            counter("payments.outbox.claimed").increment(count);
+        }
+    }
+
+    public void outboxClaimLost(String phase) {
+        counter("payments.outbox.claim.lost", "phase", phase).increment();
+    }
+
     public void recovery(String action, String outcome, Duration lag) {
         counter("payments.recovery.results", "action", action, "outcome", outcome).increment();
         timer("payments.reconcile.lag", "action", action).record(lag);

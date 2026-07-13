@@ -1,3 +1,22 @@
+x-payment-environment: &payment-environment
+  SPRING_PROFILES_ACTIVE: k6
+  PAYMENTS_DB_URL: jdbc:mysql://mysql:3306/payments?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+  PAYMENTS_DB_USERNAME: payments
+  PAYMENTS_DB_PASSWORD: payments
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_PORT: 6379
+  SERVER_PORT: 8080
+
+x-payment-app: &payment-app
+  build:
+    context: .
+  image: payments-service:local
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   mysql:
     image: mysql:8.4
@@ -16,6 +35,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  app-one:
+    <<: *payment-app
+    environment:
+      <<: *payment-environment
+      PAYMENTS_INSTANCE_ID: app-one
+    ports:
+      - "8081:8080"
+
+  app-two:
+    <<: *payment-app
+    environment:
+      <<: *payment-environment
+      PAYMENTS_INSTANCE_ID: app-two
+    ports:
+      - "8082:8080"
 
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -47,6 +82,11 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0

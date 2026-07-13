@@ -1,6 +1,7 @@
 package io.hoony.payment.presentation.testsupport;
 
 import io.hoony.payment.application.outbox.OutboxRelayService;
+import io.hoony.payment.config.RuntimeInstanceProperties;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import io.hoony.payment.infrastructure.pg.PgApproveStatus;
 import io.micrometer.core.instrument.Counter;
@@ -31,6 +32,7 @@ public class K6TestSupportController {
     private final OutboxRelayService outboxRelay;
     private final MeterRegistry meterRegistry;
     private final StringRedisTemplate redis;
+    private final RuntimeInstanceProperties runtime;
     private volatile double invalidTransitionBaseline;
     private volatile HotspotMetrics hotspotBaseline = HotspotMetrics.zero();
 
@@ -39,13 +41,15 @@ public class K6TestSupportController {
             FakePaymentGateway gateway,
             OutboxRelayService outboxRelay,
             MeterRegistry meterRegistry,
-            StringRedisTemplate redis
+            StringRedisTemplate redis,
+            RuntimeInstanceProperties runtime
     ) {
         this.jdbc = jdbc;
         this.gateway = gateway;
         this.outboxRelay = outboxRelay;
         this.meterRegistry = meterRegistry;
         this.redis = redis;
+        this.runtime = runtime;
     }
 
     @Transactional
@@ -90,6 +94,11 @@ public class K6TestSupportController {
         return Map.of("published", total);
     }
 
+    @PostMapping("/relay-outbox-once")
+    public Map<String, Integer> relayOutboxOnce(@RequestParam int limit) {
+        return Map.of("published", outboxRelay.relayPending(limit));
+    }
+
     @GetMapping("/consistency")
     public Map<String, Long> consistency() {
         return Map.of(
@@ -123,6 +132,30 @@ public class K6TestSupportController {
         return Map.copyOf(report);
     }
 
+    @GetMapping("/multi-instance")
+    public Map<String, Object> multiInstance() {
+        HotspotMetrics current = hotspotSnapshot();
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("instanceId", runtime.instanceId());
+        report.put("approveCalls", gateway.approveCallCount());
+        report.put("gateAcquired", roundedDelta(current.gateAcquired(), hotspotBaseline.gateAcquired()));
+        report.put("gateRejected", roundedDelta(current.gateRejected(), hotspotBaseline.gateRejected()));
+        report.put("gateUnavailable", roundedDelta(current.gateUnavailable(), hotspotBaseline.gateUnavailable()));
+        report.put("dbTransactionCount", current.dbTransactionCount() - hotspotBaseline.dbTransactionCount());
+        report.put("dbTransactionTotalMillis", current.dbTransactionTotalMillis() - hotspotBaseline.dbTransactionTotalMillis());
+        report.put("lockWaitCount", current.lockWaitCount() - hotspotBaseline.lockWaitCount());
+        report.put("lockWaitTotalMillis", current.lockWaitTotalMillis() - hotspotBaseline.lockWaitTotalMillis());
+        report.put("outboxClaimed", roundedDelta(current.outboxClaimed(), hotspotBaseline.outboxClaimed()));
+        report.put("outboxPublished", roundedDelta(current.outboxPublished(), hotspotBaseline.outboxPublished()));
+        report.put("outboxClaimCount", current.outboxClaimCount() - hotspotBaseline.outboxClaimCount());
+        report.put("outboxClaimTotalMillis", current.outboxClaimTotalMillis() - hotspotBaseline.outboxClaimTotalMillis());
+        report.put("outboxTotal", count("SELECT COUNT(*) FROM outbox_events"));
+        report.put("outboxPublishedRows", count("SELECT COUNT(*) FROM outbox_events WHERE status='PUBLISHED'"));
+        report.put("outboxPendingRows", count("SELECT COUNT(*) FROM outbox_events WHERE status='PENDING'"));
+        report.put("outboxClaimedRows", count("SELECT COUNT(*) FROM outbox_events WHERE claim_owner IS NOT NULL"));
+        return Map.copyOf(report);
+    }
+
     private double invalidTransitionCount() {
         Counter counter = meterRegistry.find("payments.state.invalid.transitions").counter();
         return counter == null ? 0 : counter.count();
@@ -138,7 +171,11 @@ public class K6TestSupportController {
                 timerCount("payments.db.transaction.duration"),
                 timerTotalMillis("payments.db.transaction.duration"),
                 timerCount("payments.db.lock.wait"),
-                timerTotalMillis("payments.db.lock.wait")
+                timerTotalMillis("payments.db.lock.wait"),
+                counterCount("payments.outbox.claimed"),
+                counterCount("payments.outbox.publish", "outcome", "success"),
+                timerCount("payments.outbox.claim.duration"),
+                timerTotalMillis("payments.outbox.claim.duration")
         );
     }
 
@@ -147,6 +184,12 @@ public class K6TestSupportController {
                 .tag("outcome", outcome)
                 .counters()
                 .stream()
+                .mapToDouble(Counter::count)
+                .sum();
+    }
+
+    private double counterCount(String name, String... tags) {
+        return meterRegistry.find(name).tags(tags).counters().stream()
                 .mapToDouble(Counter::count)
                 .sum();
     }
@@ -179,10 +222,14 @@ public class K6TestSupportController {
             long dbTransactionCount,
             double dbTransactionTotalMillis,
             long lockWaitCount,
-            double lockWaitTotalMillis
+            double lockWaitTotalMillis,
+            double outboxClaimed,
+            double outboxPublished,
+            long outboxClaimCount,
+            double outboxClaimTotalMillis
     ) {
         private static HotspotMetrics zero() {
-            return new HotspotMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new HotspotMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
     }
 }

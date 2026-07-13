@@ -44,6 +44,12 @@ public class OutboxEventEntity {
     @Column(name = "publish_attempts", nullable = false)
     private int publishAttempts;
 
+    @Column(name = "claim_owner", length = 100)
+    private String claimOwner;
+
+    @Column(name = "claimed_until")
+    private Instant claimedUntil;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -67,6 +73,10 @@ public class OutboxEventEntity {
         this.status = event.status();
         this.publishAttempts = event.publishAttempts();
         this.publishedAt = event.publishedAt();
+    }
+
+    public String id() {
+        return id;
     }
 
     public OutboxEvent toDomain() {
