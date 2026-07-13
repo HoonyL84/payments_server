@@ -2,6 +2,8 @@ package io.hoony.payment.infrastructure.memory;
 
 import io.hoony.payment.application.port.out.PaymentRepository;
 import io.hoony.payment.domain.payment.Payment;
+import io.hoony.payment.domain.payment.PaymentEvent;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -9,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+@Profile("test")
 @Repository
 public class InMemoryPaymentRepository implements PaymentRepository {
 
@@ -35,6 +38,21 @@ public class InMemoryPaymentRepository implements PaymentRepository {
         return findById(paymentId);
     }
 
+    @Override
+    public boolean claimForConfirmation(UUID id) {
+        Payment payment = payments.get(id);
+        if (payment == null) {
+            return false;
+        }
+        synchronized (payment) {
+            if (!payment.state().requiresConfirmation()) {
+                return false;
+            }
+            payment.apply(PaymentEvent.CONFIRM_STARTED);
+            save(payment);
+            return true;
+        }
+    }
     @Override
     public long count() {
         return payments.size();

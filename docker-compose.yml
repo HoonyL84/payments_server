@@ -1,32 +1,22 @@
-version: '3.8'
-
-# ============================================================
-# [Harness] 로컬 개발 인프라 기본 세트
-# 사용법: docker-compose up -d
-# ============================================================
-
 services:
-
-  # ── MySQL ──────────────────────────────────────────────────
   mysql:
-    image: mysql:8.0
-    container_name: harness-mysql
+    image: mysql:8.4
+    container_name: payments-mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: app_db
-      MYSQL_USER: app_user
-      MYSQL_PASSWORD: app_password
+      MYSQL_DATABASE: payments
+      MYSQL_USER: payments
+      MYSQL_PASSWORD: payments
     ports:
       - "3306:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - payments_mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Redis ──────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: harness-redis
@@ -36,7 +26,6 @@ services:
     volumes:
       - redis_data:/data
 
-  # ── Kafka + Zookeeper ──────────────────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: harness-zookeeper
@@ -58,7 +47,6 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
-  # ── Elasticsearch ──────────────────────────────────────────
   elasticsearch:
     image: elasticsearch:8.13.0
     container_name: harness-elasticsearch
@@ -72,6 +60,6 @@ services:
       - es_data:/usr/share/elasticsearch/data
 
 volumes:
-  mysql_data:
+  payments_mysql_data:
   redis_data:
   es_data:

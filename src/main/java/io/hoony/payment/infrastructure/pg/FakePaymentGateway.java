@@ -22,8 +22,8 @@ public class FakePaymentGateway implements PaymentGateway {
                 request.amount()
         ));
         return switch (result.status()) {
-            case APPROVED -> ApprovalResult.approved();
-            case DECLINED -> ApprovalResult.declined();
+            case APPROVED -> ApprovalResult.approved("fake-txn-" + request.providerRequestId());
+            case DECLINED -> ApprovalResult.declined("DECLINED");
             case TIMED_OUT -> ApprovalResult.timedOut();
         };
     }

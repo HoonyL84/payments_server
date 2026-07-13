@@ -1,8 +1,10 @@
 package io.hoony.payment.application.confirmation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.hoony.payment.application.approval.ApprovePaymentCommand;
 import io.hoony.payment.application.approval.ApprovePaymentResult;
 import io.hoony.payment.application.approval.ApprovePaymentService;
+import io.hoony.payment.application.approval.ApprovalTransactionService;
 import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
 import io.hoony.payment.application.port.out.PaymentAttemptRepository;
 import io.hoony.payment.application.port.out.PaymentGateway;
@@ -15,6 +17,9 @@ import io.hoony.payment.domain.money.Money;
 import io.hoony.payment.domain.payment.PaymentState;
 import io.hoony.payment.infrastructure.memory.InMemoryIdempotencyRecordRepository;
 import io.hoony.payment.infrastructure.memory.InMemoryPaymentAttemptRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryLedgerEntryRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryMerchantContractRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryOutboxEventRepository;
 import io.hoony.payment.infrastructure.memory.InMemoryPaymentRepository;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import io.hoony.payment.infrastructure.pg.PgApproveStatus;
@@ -170,19 +175,18 @@ class ConfirmPaymentServiceTest {
             this.gateway = paymentGateway instanceof BlockingPaymentGateway blocking
                     ? blocking.delegate
                     : (FakePaymentGateway) paymentGateway;
-            this.approvePaymentService = new ApprovePaymentService(
+            ApprovalTransactionService transactions = new ApprovalTransactionService(
                     idempotencyRecords,
                     payments,
                     attempts,
-                    paymentGateway,
+                    new InMemoryMerchantContractRepository(),
+                    new InMemoryLedgerEntryRepository(),
+                    new InMemoryOutboxEventRepository(),
+                    new ObjectMapper(),
                     Clock.systemUTC()
             );
-            this.confirmPaymentService = new ConfirmPaymentService(
-                    payments,
-                    attempts,
-                    paymentGateway,
-                    Clock.systemUTC()
-            );
+            this.approvePaymentService = new ApprovePaymentService(transactions, paymentGateway);
+            this.confirmPaymentService = new ConfirmPaymentService(transactions, paymentGateway);
             this.getPaymentService = new GetPaymentService(payments);
         }
 

@@ -8,7 +8,11 @@ spring:
     hibernate:
       ddl-auto: none
     open-in-view: false
+  flyway:
+    enabled: false
   data:
     redis:
+      repositories:
+        enabled: false
       host: localhost
       port: 6379

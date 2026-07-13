@@ -6,6 +6,7 @@ import io.hoony.payment.application.approval.ApprovePaymentService;
 import io.hoony.payment.domain.money.Money;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,7 +30,7 @@ public class PaymentApprovalController {
 
     @PostMapping("/approve")
     public ResponseEntity<ApprovePaymentHttpResponse> approve(
-            @RequestHeader("Idempotency-Key") @NotBlank String idempotencyKey,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
             @Valid @RequestBody ApprovePaymentHttpRequest request
     ) {
         ApprovePaymentResult result = approvePaymentService.approve(new ApprovePaymentCommand(

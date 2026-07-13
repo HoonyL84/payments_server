@@ -15,19 +15,38 @@ public class IdempotencyRecord {
     private String responseBody;
     private final Instant createdAt;
 
-    private IdempotencyRecord(IdempotencyScope scope, String fingerprint, Instant createdAt) {
-        this.scope = Objects.requireNonNull(scope, "scope must not be null");
-        this.fingerprint = requireText(fingerprint, "fingerprint");
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
-        this.status = IdempotencyStatus.PROCESSING;
-    }
-
-    public static IdempotencyRecord start(
+    private IdempotencyRecord(
             IdempotencyScope scope,
             String fingerprint,
+            IdempotencyStatus status,
+            String responseBody,
             Instant createdAt
     ) {
-        return new IdempotencyRecord(scope, fingerprint, createdAt);
+        this.scope = Objects.requireNonNull(scope, "scope must not be null");
+        this.fingerprint = requireText(fingerprint, "fingerprint");
+        this.status = Objects.requireNonNull(status, "status must not be null");
+        this.responseBody = responseBody;
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
+    }
+
+    public static IdempotencyRecord start(IdempotencyScope scope, String fingerprint, Instant createdAt) {
+        return new IdempotencyRecord(
+                scope,
+                fingerprint,
+                IdempotencyStatus.PROCESSING,
+                null,
+                createdAt
+        );
+    }
+
+    public static IdempotencyRecord restore(
+            IdempotencyScope scope,
+            String fingerprint,
+            IdempotencyStatus status,
+            String responseBody,
+            Instant createdAt
+    ) {
+        return new IdempotencyRecord(scope, fingerprint, status, responseBody, createdAt);
     }
 
     public void requireSameFingerprint(String otherFingerprint) {

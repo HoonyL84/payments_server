@@ -7,7 +7,7 @@ jspm_packages/
 dist/
 build/
 *.log
-out/
+/out/
 target/
 
 # Environment variables (절대 커밋 금지)

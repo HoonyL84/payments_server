@@ -6,9 +6,6 @@ import io.hoony.payment.domain.money.Money;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Payment aggregate that owns approval amount and lifecycle state.
- */
 public class Payment {
 
     private final UUID id;
@@ -16,37 +13,60 @@ public class Payment {
     private final String merchantId;
     private final String orderId;
     private final Money amount;
-    private volatile PaymentState state;
+    private PaymentState state;
     private Money canceledAmount;
 
-    private Payment(UUID id, String userId, String merchantId, String orderId, Money amount) {
+    private Payment(
+            UUID id,
+            String userId,
+            String merchantId,
+            String orderId,
+            Money amount,
+            PaymentState state,
+            Money canceledAmount
+    ) {
         this.id = Objects.requireNonNull(id, "id must not be null");
         this.userId = requireText(userId, "userId");
         this.merchantId = requireText(merchantId, "merchantId");
         this.orderId = requireText(orderId, "orderId");
         this.amount = Objects.requireNonNull(amount, "amount must not be null");
         this.amount.requirePositive();
-        this.state = PaymentState.REQUESTED;
-        this.canceledAmount = new Money(0, amount.currency());
+        this.state = Objects.requireNonNull(state, "state must not be null");
+        this.canceledAmount = Objects.requireNonNull(canceledAmount, "canceledAmount must not be null");
+        this.amount.requireSameCurrency(canceledAmount);
+        if (canceledAmount.isGreaterThan(amount)) {
+            throw new DomainException("Canceled amount cannot exceed approved amount.");
+        }
     }
 
-    /**
-     * Creates a new requested payment.
-     */
     public static Payment request(UUID id, String userId, String merchantId, String orderId, Money amount) {
-        return new Payment(id, userId, merchantId, orderId, amount);
+        return new Payment(
+                id,
+                userId,
+                merchantId,
+                orderId,
+                amount,
+                PaymentState.REQUESTED,
+                new Money(0, amount.currency())
+        );
     }
 
-    /**
-     * Applies a state event to this payment.
-     */
+    public static Payment restore(
+            UUID id,
+            String userId,
+            String merchantId,
+            String orderId,
+            Money amount,
+            PaymentState state,
+            Money canceledAmount
+    ) {
+        return new Payment(id, userId, merchantId, orderId, amount, state, canceledAmount);
+    }
+
     public void apply(PaymentEvent event) {
         state = PaymentStateMachine.transition(state, event);
     }
 
-    /**
-     * Records a cancellation amount after cancellation succeeds.
-     */
     public void recordCanceledAmount(Money cancelAmount) {
         if (state != PaymentState.APPROVED) {
             throw new DomainException("Only approved payments can record cancellation amount.");
@@ -62,51 +82,30 @@ public class Payment {
         canceledAmount = nextCanceledAmount;
     }
 
-    /**
-     * Returns the payment id.
-     */
     public UUID id() {
         return id;
     }
 
-    /**
-     * Returns the user id.
-     */
     public String userId() {
         return userId;
     }
 
-    /**
-     * Returns the merchant id.
-     */
     public String merchantId() {
         return merchantId;
     }
 
-    /**
-     * Returns the external order id.
-     */
     public String orderId() {
         return orderId;
     }
 
-    /**
-     * Returns the immutable approved amount.
-     */
     public Money amount() {
         return amount;
     }
 
-    /**
-     * Returns the current lifecycle state.
-     */
     public PaymentState state() {
         return state;
     }
 
-    /**
-     * Returns the cumulative canceled amount.
-     */
     public Money canceledAmount() {
         return canceledAmount;
     }

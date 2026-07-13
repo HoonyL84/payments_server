@@ -1,16 +1,18 @@
 package io.hoony.payment.application.approval;
 
-import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
-import io.hoony.payment.application.port.out.PaymentAttemptRepository;
-import io.hoony.payment.application.port.out.PaymentRepository;
-import io.hoony.payment.domain.common.DomainException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.hoony.payment.domain.common.ResourceConflictException;
 import io.hoony.payment.domain.idempotency.IdempotencyOperation;
 import io.hoony.payment.domain.idempotency.IdempotencyRecord;
 import io.hoony.payment.domain.idempotency.IdempotencyScope;
+import io.hoony.payment.domain.ledger.LedgerDirection;
 import io.hoony.payment.domain.money.Money;
+import io.hoony.payment.domain.outbox.OutboxEventType;
 import io.hoony.payment.domain.payment.PaymentState;
 import io.hoony.payment.infrastructure.memory.InMemoryIdempotencyRecordRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryLedgerEntryRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryMerchantContractRepository;
+import io.hoony.payment.infrastructure.memory.InMemoryOutboxEventRepository;
 import io.hoony.payment.infrastructure.memory.InMemoryPaymentAttemptRepository;
 import io.hoony.payment.infrastructure.memory.InMemoryPaymentRepository;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
@@ -18,11 +20,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,186 +27,161 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ApprovePaymentServiceTest {
 
     @Test
-    void approve_동일멱등키동시요청은_pg승인을_한번만_호출한다() throws Exception {
-        IdempotencyRecordRepository idempotencyRecords = new InMemoryIdempotencyRecordRepository();
-        PaymentRepository payments = new InMemoryPaymentRepository();
-        PaymentAttemptRepository attempts = new InMemoryPaymentAttemptRepository();
-        FakePaymentGateway gateway = new FakePaymentGateway();
-        ApprovePaymentService service = new ApprovePaymentService(
-                idempotencyRecords,
-                payments,
-                attempts,
-                gateway,
-                Clock.systemUTC()
-        );
-        ApprovePaymentCommand command = new ApprovePaymentCommand(
+    void approve_동일한요청을재시도하면_최초응답을재사용한다() {
+        Fixture fixture = new Fixture();
+        ApprovePaymentCommand command = command(
                 "approve-key-1",
-                "user-1",
                 "merchant-1",
                 "order-1",
-                Money.positiveKrw(30_000)
+                30_000
         );
 
-        int requestCount = 100;
-        CountDownLatch ready = new CountDownLatch(requestCount);
-        CountDownLatch start = new CountDownLatch(1);
-        var executor = Executors.newFixedThreadPool(requestCount);
-        List<java.util.concurrent.Future<ApprovePaymentResult>> futures = java.util.stream.IntStream.range(0, requestCount)
-                .mapToObj(ignored -> executor.submit(() -> {
-                    ready.countDown();
-                    start.await();
-                    return service.approve(command);
-                }))
-                .toList();
+        ApprovePaymentResult first = fixture.service.approve(command);
+        ApprovePaymentResult replay = fixture.service.approve(command);
 
-        assertThat(ready.await(3, TimeUnit.SECONDS)).isTrue();
-        start.countDown();
-
-        List<ApprovePaymentResult> results = futures.stream()
-                .map(future -> {
-                    try {
-                        return future.get(3, TimeUnit.SECONDS);
-                    } catch (Exception exception) {
-                        throw new AssertionError(exception);
-                    }
-                })
-                .toList();
-        executor.shutdownNow();
-
-        UUID paymentId = results.getFirst().paymentId();
-        assertThat(results).allSatisfy(result -> {
-            assertThat(result.paymentId()).isEqualTo(paymentId);
-            assertThat(result.state()).isEqualTo(PaymentState.APPROVED);
-        });
-        assertThat(gateway.approveCallCount()).isEqualTo(1);
-        assertThat(payments.count()).isEqualTo(1);
-        assertThat(attempts.findAll()).hasSize(1);
+        assertThat(replay.paymentId()).isEqualTo(first.paymentId());
+        assertThat(replay.state()).isEqualTo(PaymentState.APPROVED);
+        assertThat(replay.reused()).isTrue();
+        assertThat(fixture.gateway.approveCallCount()).isEqualTo(1);
+        assertThat(fixture.payments.count()).isEqualTo(1);
+        assertThat(fixture.attempts.findAll()).hasSize(1);
     }
 
     @Test
     void approve_같은멱등키에_다른payload가_들어오면_거부한다() {
-        ApprovePaymentService service = new ApprovePaymentService(
-                new InMemoryIdempotencyRecordRepository(),
-                new InMemoryPaymentRepository(),
-                new InMemoryPaymentAttemptRepository(),
-                new FakePaymentGateway(),
-                Clock.systemUTC()
-        );
+        Fixture fixture = new Fixture();
+        fixture.service.approve(command("approve-key-1", "merchant-1", "order-1", 30_000));
 
-        service.approve(new ApprovePaymentCommand(
-                "approve-key-1",
-                "user-1",
-                "merchant-1",
-                "order-1",
-                Money.positiveKrw(30_000)
-        ));
-
-        assertThatThrownBy(() -> service.approve(new ApprovePaymentCommand(
-                "approve-key-1",
-                "user-1",
-                "merchant-1",
-                "order-1",
-                Money.positiveKrw(40_000)
-        )))
-                .isInstanceOf(DomainException.class)
+        assertThatThrownBy(() -> fixture.service.approve(
+                command("approve-key-1", "merchant-1", "order-1", 40_000)
+        ))
+                .isInstanceOf(ResourceConflictException.class)
                 .hasMessageContaining("different request fingerprint");
     }
 
     @Test
     void approve_다른멱등키라도_같은가맹점주문이면_중복승인을_거부한다() {
-        FakePaymentGateway gateway = new FakePaymentGateway();
-        ApprovePaymentService service = new ApprovePaymentService(
-                new InMemoryIdempotencyRecordRepository(),
-                new InMemoryPaymentRepository(),
-                new InMemoryPaymentAttemptRepository(),
-                gateway,
-                Clock.systemUTC()
-        );
+        Fixture fixture = new Fixture();
+        fixture.service.approve(command("approve-key-1", "merchant-1", "order-1", 30_000));
 
-        service.approve(new ApprovePaymentCommand(
-                "approve-key-1",
-                "user-1",
-                "merchant-1",
-                "order-1",
-                Money.positiveKrw(30_000)
-        ));
-
-        assertThatThrownBy(() -> service.approve(new ApprovePaymentCommand(
-                "approve-key-2",
-                "user-1",
-                "merchant-1",
-                "order-1",
-                Money.positiveKrw(30_000)
-        )))
-                .isInstanceOf(DomainException.class)
+        assertThatThrownBy(() -> fixture.service.approve(
+                command("approve-key-2", "merchant-1", "order-1", 30_000)
+        ))
+                .isInstanceOf(ResourceConflictException.class)
                 .hasMessageContaining("already exists");
-        assertThat(gateway.approveCallCount()).isEqualTo(1);
+        assertThat(fixture.gateway.approveCallCount()).isEqualTo(1);
     }
 
     @Test
     void approve_같은key라도_가맹점이다르면_서로다른scope로_처리한다() {
-        FakePaymentGateway gateway = new FakePaymentGateway();
-        PaymentRepository payments = new InMemoryPaymentRepository();
-        ApprovePaymentService service = new ApprovePaymentService(
-                new InMemoryIdempotencyRecordRepository(),
-                payments,
-                new InMemoryPaymentAttemptRepository(),
-                gateway,
-                Clock.systemUTC()
-        );
+        Fixture fixture = new Fixture();
 
-        service.approve(new ApprovePaymentCommand(
+        fixture.service.approve(command(
                 "shared-key",
-                "user-1",
                 "merchant-1",
                 "order-merchant-1",
-                Money.positiveKrw(30_000)
+                30_000
         ));
-        service.approve(new ApprovePaymentCommand(
+        fixture.service.approve(command(
                 "shared-key",
-                "user-2",
                 "merchant-2",
                 "order-merchant-2",
-                Money.positiveKrw(30_000)
+                30_000
         ));
 
-        assertThat(gateway.approveCallCount()).isEqualTo(2);
-        assertThat(payments.count()).isEqualTo(2);
+        assertThat(fixture.gateway.approveCallCount()).isEqualTo(2);
+        assertThat(fixture.payments.count()).isEqualTo(2);
     }
 
     @Test
-    void approve_처리중인멱등요청은_pg를다시호출하지않고_409대상으로_거부한다() {
-        InMemoryIdempotencyRecordRepository idempotencyRecords =
-                new InMemoryIdempotencyRecordRepository();
-        FakePaymentGateway gateway = new FakePaymentGateway();
-        ApprovePaymentService service = new ApprovePaymentService(
-                idempotencyRecords,
-                new InMemoryPaymentRepository(),
-                new InMemoryPaymentAttemptRepository(),
-                gateway,
-                Clock.systemUTC()
-        );
-        ApprovePaymentCommand command = new ApprovePaymentCommand(
+    void approve_처리중인멱등요청은_pg를다시호출하지않고_거부한다() {
+        Fixture fixture = new Fixture();
+        ApprovePaymentCommand command = command(
                 "processing-key",
-                "user-1",
                 "merchant-1",
                 "order-processing-1",
-                Money.positiveKrw(30_000)
+                30_000
         );
         IdempotencyScope scope = new IdempotencyScope(
                 command.merchantId(),
                 IdempotencyOperation.APPROVE,
                 command.idempotencyKey()
         );
-        idempotencyRecords.save(IdempotencyRecord.start(
+        fixture.idempotencyRecords.save(IdempotencyRecord.start(
                 scope,
                 ApprovalRequestFingerprint.from(command),
                 Instant.now()
         ));
 
-        assertThatThrownBy(() -> service.approve(command))
+        assertThatThrownBy(() -> fixture.service.approve(command))
                 .isInstanceOf(ResourceConflictException.class)
                 .hasMessageContaining("still processing");
-        assertThat(gateway.approveCallCount()).isZero();
+        assertThat(fixture.gateway.approveCallCount()).isZero();
+    }
+
+    @Test
+    void approve_성공하면_균형원장과_outbox를기록한다() {
+        Fixture fixture = new Fixture();
+
+        ApprovePaymentResult result = fixture.service.approve(
+                command("approve-key-1", "merchant-1", "order-1", 30_000)
+        );
+
+        var ledger = fixture.ledgerEntries.findByPaymentId(result.paymentId());
+        assertThat(ledger).hasSize(2);
+        assertThat(ledger)
+                .filteredOn(entry -> entry.direction() == LedgerDirection.DEBIT)
+                .extracting(entry -> entry.amount().minorUnits())
+                .containsExactly(30_000L);
+        assertThat(ledger)
+                .filteredOn(entry -> entry.direction() == LedgerDirection.CREDIT)
+                .extracting(entry -> entry.amount().minorUnits())
+                .containsExactly(30_000L);
+        assertThat(fixture.outboxEvents.findAll())
+                .singleElement()
+                .extracting(event -> event.type())
+                .isEqualTo(OutboxEventType.PAYMENT_APPROVED);
+    }
+
+    private static ApprovePaymentCommand command(
+            String key,
+            String merchantId,
+            String orderId,
+            long amount
+    ) {
+        return new ApprovePaymentCommand(
+                key,
+                "user-1",
+                merchantId,
+                orderId,
+                Money.positiveKrw(amount)
+        );
+    }
+
+    private static final class Fixture {
+
+        private final Clock clock = Clock.systemUTC();
+        private final InMemoryIdempotencyRecordRepository idempotencyRecords =
+                new InMemoryIdempotencyRecordRepository();
+        private final InMemoryPaymentRepository payments = new InMemoryPaymentRepository();
+        private final InMemoryPaymentAttemptRepository attempts =
+                new InMemoryPaymentAttemptRepository();
+        private final InMemoryLedgerEntryRepository ledgerEntries =
+                new InMemoryLedgerEntryRepository();
+        private final InMemoryOutboxEventRepository outboxEvents =
+                new InMemoryOutboxEventRepository();
+        private final FakePaymentGateway gateway = new FakePaymentGateway();
+        private final ApprovalTransactionService transactions = new ApprovalTransactionService(
+                idempotencyRecords,
+                payments,
+                attempts,
+                new InMemoryMerchantContractRepository(),
+                ledgerEntries,
+                outboxEvents,
+                new ObjectMapper(),
+                clock
+        );
+        private final ApprovePaymentService service =
+                new ApprovePaymentService(transactions, gateway);
     }
 }

@@ -25,6 +25,8 @@ public interface PaymentRepository {
      */
     Optional<Payment> findByMerchantIdAndOrderId(String merchantId, String orderId);
 
+    boolean claimForConfirmation(UUID id);
+
     /**
      * Counts all payments.
      */

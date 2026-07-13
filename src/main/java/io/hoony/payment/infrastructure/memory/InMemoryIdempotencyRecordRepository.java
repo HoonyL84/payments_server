@@ -3,12 +3,14 @@ package io.hoony.payment.infrastructure.memory;
 import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
 import io.hoony.payment.domain.idempotency.IdempotencyRecord;
 import io.hoony.payment.domain.idempotency.IdempotencyScope;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+@Profile("test")
 @Repository
 public class InMemoryIdempotencyRecordRepository implements IdempotencyRecordRepository {
 

@@ -18,20 +18,24 @@ public record ApprovePaymentCommand(
      * Validates the approval command.
      */
     public ApprovePaymentCommand {
-        idempotencyKey = requireText(idempotencyKey, "idempotencyKey");
-        userId = requireText(userId, "userId");
-        merchantId = requireText(merchantId, "merchantId");
-        orderId = requireText(orderId, "orderId");
+        idempotencyKey = requireText(idempotencyKey, "idempotencyKey", 128);
+        userId = requireText(userId, "userId", 64);
+        merchantId = requireText(merchantId, "merchantId", 64);
+        orderId = requireText(orderId, "orderId", 128);
         if (amount == null) {
             throw new DomainException("amount is required.");
         }
         amount.requirePositive();
     }
 
-    private static String requireText(String value, String fieldName) {
+    private static String requireText(String value, String fieldName, int maxLength) {
         if (value == null || value.isBlank()) {
             throw new DomainException(fieldName + " is required.");
         }
-        return value.trim();
+        String normalized = value.trim();
+        if (normalized.length() > maxLength) {
+            throw new DomainException(fieldName + " is too long.");
+        }
+        return normalized;
     }
 }
