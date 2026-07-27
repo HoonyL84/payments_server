@@ -1,7 +1,6 @@
 package io.hoony.payment.domain.idempotency;
 
 import io.hoony.payment.domain.common.DomainException;
-import io.hoony.payment.domain.common.ResourceConflictException;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -51,9 +50,7 @@ public class IdempotencyRecord {
 
     public void requireSameFingerprint(String otherFingerprint) {
         if (!fingerprint.equals(requireText(otherFingerprint, "otherFingerprint"))) {
-            throw new ResourceConflictException(
-                    "Idempotency key reused with different request fingerprint."
-            );
+            throw new IdempotencyConflictException(scope.operation());
         }
     }
 

@@ -31,6 +31,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [6. PG timeout은 실패가 아니라 확인이 필요한 상태다](https://velog.io/@hoonyl/6.-PG-timeout%EC%9D%80-%EC%8B%A4%ED%8C%A8%EA%B0%80-%EC%95%84%EB%8B%88%EB%9D%BC-%ED%99%95%EC%9D%B8%EC%9D%B4-%ED%95%84%EC%9A%94%ED%95%9C-%EC%83%81%ED%83%9C%EB%8B%A4)
 - [7. PG 호출을 DB 트랜잭션 밖으로 분리한 이유](https://velog.io/@hoonyl/7.-PG-%ED%98%B8%EC%B6%9C%EC%9D%84-DB-%ED%8A%B8%EB%9E%9C%EC%9E%AD%EC%85%98-%EB%B0%96%EC%9C%BC%EB%A1%9C-%EB%B6%84%EB%A6%AC%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [8. 취소 금액을 PG 응답 전에 예약한 이유](https://velog.io/@hoonyl/8.-%EC%B7%A8%EC%86%8C-%EA%B8%88%EC%95%A1%EC%9D%84-PG-%EC%9D%91%EB%8B%B5-%EC%A0%84%EC%97%90-%EC%98%88%EC%95%BD%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+- [9. 결제 서버의 느린 지점을 나눠서 보기](https://velog.io/@hoonyl/9.-%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B2%84%EC%9D%98-%EB%8A%90%EB%A6%B0-%EC%A7%80%EC%A0%90%EC%9D%84-%EB%82%98%EB%88%A0%EC%84%9C-%EB%B3%B4%EA%B8%B0)
 
 ## 테스트 데이터 정책
 

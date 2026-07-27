@@ -16,3 +16,14 @@ management:
     health:
       probes:
         enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        payments.pg.latency: true
+        payments.db.transaction.duration: true
+        payments.db.lock.wait: true
+        payments.outbox.publish.lag: true
+
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId:-none}]"
