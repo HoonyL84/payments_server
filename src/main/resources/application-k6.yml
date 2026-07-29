@@ -1,0 +1,14 @@
+spring:
+  config:
+    activate:
+      on-profile: k6
+  datasource:
+    url: ${PAYMENTS_DB_URL:jdbc:mysql://localhost:3306/payments?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${PAYMENTS_DB_USERNAME:payments}
+    password: ${PAYMENTS_DB_PASSWORD:payments}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
