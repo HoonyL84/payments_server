@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 
 @Profile("!test")
@@ -42,5 +43,14 @@ public class JpaOutboxEventRepositoryAdapter implements OutboxEventRepository {
     @Override
     public List<OutboxEvent> findAll() {
         return repository.findAll().stream().map(OutboxEventEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<OutboxEvent> findPendingBefore(Instant createdBefore, int limit) {
+        return repository.findByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(
+                        OutboxStatus.PENDING, createdBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(OutboxEventEntity::toDomain)
+                .toList();
     }
 }

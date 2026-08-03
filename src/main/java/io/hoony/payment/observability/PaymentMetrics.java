@@ -49,6 +49,11 @@ public class PaymentMetrics {
         counter("payments.outbox.publish", "outcome", "failed").increment();
     }
 
+    public void recovery(String action, String outcome, Duration lag) {
+        counter("payments.recovery.results", "action", action, "outcome", outcome).increment();
+        timer("payments.reconcile.lag", "action", action).record(lag);
+    }
+
     private Counter counter(String name, String... tags) {
         return Counter.builder(name).tags(tags).register(registry);
     }

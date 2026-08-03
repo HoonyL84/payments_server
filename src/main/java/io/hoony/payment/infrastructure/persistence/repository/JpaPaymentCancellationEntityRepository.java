@@ -2,6 +2,7 @@ package io.hoony.payment.infrastructure.persistence.repository;
 
 import io.hoony.payment.domain.cancellation.CancellationState;
 import io.hoony.payment.infrastructure.persistence.entity.PaymentCancellationEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -9,9 +10,16 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 
 public interface JpaPaymentCancellationEntityRepository
         extends JpaRepository<PaymentCancellationEntity, String> {
+
+    List<PaymentCancellationEntity> findByStateInAndUpdatedAtBeforeOrderByUpdatedAtAsc(
+            Collection<CancellationState> states,
+            Instant updatedAt,
+            Pageable pageable
+    );
 
     @Query("""
             select coalesce(sum(cancellation.amountMinorUnits), 0)

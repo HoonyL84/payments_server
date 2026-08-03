@@ -43,4 +43,9 @@ public class JpaLedgerEntryRepositoryAdapter implements LedgerEntryRepository {
     public List<LedgerEntry> findAll() {
         return repository.findAll().stream().map(LedgerEntryEntity::toDomain).toList();
     }
+
+    @Override
+    public long countDrifts() {
+        return repository.countDrifts();
+    }
 }

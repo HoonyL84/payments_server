@@ -89,4 +89,12 @@ public class PaymentEntity {
     public String getId() {
         return id;
     }
+
+    public PaymentState getState() {
+        return state;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
 }

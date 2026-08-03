@@ -33,6 +33,11 @@ public class LedgerConsistencyService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public long countDrifts() {
+        return ledgerEntries.countDrifts();
+    }
+
     private LedgerDrift toDrift(GroupKey key, List<LedgerEntry> entries) {
         long debit = entries.stream()
                 .filter(entry -> entry.direction() == LedgerDirection.DEBIT)

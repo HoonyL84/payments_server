@@ -62,6 +62,22 @@ public class PaymentCancellationEntity {
         this.updatedAt = now;
     }
 
+    public String getId() {
+        return id;
+    }
+
+    public String getPaymentId() {
+        return paymentId;
+    }
+
+    public CancellationState getState() {
+        return state;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
     public PaymentCancellation toDomain() {
         return PaymentCancellation.restore(
                 UUID.fromString(id),

@@ -6,6 +6,7 @@ import io.hoony.payment.domain.outbox.OutboxStatus;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,5 +35,15 @@ public class InMemoryOutboxEventRepository implements OutboxEventRepository {
     @Override
     public List<OutboxEvent> findAll() {
         return List.copyOf(events.values());
+    }
+
+    @Override
+    public List<OutboxEvent> findPendingBefore(Instant createdBefore, int limit) {
+        return events.values().stream()
+                .filter(event -> event.status() == OutboxStatus.PENDING)
+                .filter(event -> event.createdAt().isBefore(createdBefore))
+                .sorted((left, right) -> left.createdAt().compareTo(right.createdAt()))
+                .limit(limit)
+                .toList();
     }
 }

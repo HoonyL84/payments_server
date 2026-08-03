@@ -5,10 +5,17 @@ import io.hoony.payment.infrastructure.persistence.entity.OutboxEventEntity;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface JpaOutboxEventEntityRepository
         extends JpaRepository<OutboxEventEntity, String> {
 
     List<OutboxEventEntity> findByStatusOrderByCreatedAtAsc(OutboxStatus status, Pageable pageable);
+
+    List<OutboxEventEntity> findByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(
+            OutboxStatus status,
+            Instant createdAt,
+            Pageable pageable
+    );
 }

@@ -1,7 +1,9 @@
 package io.hoony.payment.application.port.out;
 
+import io.hoony.payment.application.recovery.StaleCancellation;
 import io.hoony.payment.domain.cancellation.PaymentCancellation;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,4 +19,6 @@ public interface CancellationRepository {
     boolean claimForConfirmation(UUID id);
 
     List<PaymentCancellation> findAll();
+
+    List<StaleCancellation> findStaleProcessing(Instant updatedBefore, int limit);
 }

@@ -1,11 +1,14 @@
 package io.hoony.payment.infrastructure.memory;
 
 import io.hoony.payment.application.port.out.PaymentRepository;
+import io.hoony.payment.application.recovery.StalePayment;
 import io.hoony.payment.domain.payment.Payment;
 import io.hoony.payment.domain.payment.PaymentEvent;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,6 +63,15 @@ public class InMemoryPaymentRepository implements PaymentRepository {
     @Override
     public long count() {
         return payments.size();
+    }
+
+    @Override
+    public List<StalePayment> findStaleProcessing(Instant updatedBefore, int limit) {
+        return payments.values().stream()
+                .filter(payment -> !payment.state().isTerminal())
+                .map(payment -> new StalePayment(payment.id(), payment.state(), Instant.EPOCH))
+                .limit(limit)
+                .toList();
     }
 
     private static String orderKey(String merchantId, String orderId) {

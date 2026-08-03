@@ -1,6 +1,7 @@
 package io.hoony.payment.infrastructure.persistence.adapter;
 
 import io.hoony.payment.application.port.out.PaymentRepository;
+import io.hoony.payment.application.recovery.StalePayment;
 import io.hoony.payment.domain.payment.Payment;
 import io.hoony.payment.domain.payment.PaymentState;
 import io.hoony.payment.domain.common.ResourceConflictException;
@@ -8,10 +9,12 @@ import io.hoony.payment.infrastructure.persistence.entity.PaymentEntity;
 import io.hoony.payment.infrastructure.persistence.repository.JpaPaymentEntityRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,5 +70,21 @@ public class JpaPaymentRepositoryAdapter implements PaymentRepository {
     @Override
     public long count() {
         return repository.count();
+    }
+
+    @Override
+    public List<StalePayment> findStaleProcessing(Instant updatedBefore, int limit) {
+        List<PaymentState> states = List.of(
+                PaymentState.REQUESTED,
+                PaymentState.APPROVING,
+                PaymentState.PENDING_CONFIRMATION,
+                PaymentState.CONFIRMING
+        );
+        return repository.findByStateInAndUpdatedAtBeforeOrderByUpdatedAtAsc(
+                        states, updatedBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(entity -> new StalePayment(
+                        UUID.fromString(entity.getId()), entity.getState(), entity.getUpdatedAt()))
+                .toList();
     }
 }

@@ -1,11 +1,13 @@
 package io.hoony.payment.infrastructure.persistence.adapter;
 
 import io.hoony.payment.application.port.out.CancellationRepository;
+import io.hoony.payment.application.recovery.StaleCancellation;
 import io.hoony.payment.domain.cancellation.CancellationState;
 import io.hoony.payment.domain.cancellation.PaymentCancellation;
 import io.hoony.payment.infrastructure.persistence.entity.PaymentCancellationEntity;
 import io.hoony.payment.infrastructure.persistence.repository.JpaPaymentCancellationEntityRepository;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.Clock;
@@ -19,6 +21,13 @@ import java.util.UUID;
 public class JpaCancellationRepositoryAdapter implements CancellationRepository {
 
     private static final List<CancellationState> IN_FLIGHT_STATES = List.of(
+            CancellationState.CANCELING,
+            CancellationState.CANCEL_PENDING_CONFIRMATION,
+            CancellationState.CANCEL_CONFIRMING
+    );
+
+    private static final List<CancellationState> STALE_STATES = List.of(
+            CancellationState.CANCEL_REQUESTED,
             CancellationState.CANCELING,
             CancellationState.CANCEL_PENDING_CONFIRMATION,
             CancellationState.CANCEL_CONFIRMING
@@ -67,5 +76,18 @@ public class JpaCancellationRepositoryAdapter implements CancellationRepository 
     @Override
     public List<PaymentCancellation> findAll() {
         return repository.findAll().stream().map(PaymentCancellationEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<StaleCancellation> findStaleProcessing(Instant updatedBefore, int limit) {
+        return repository.findByStateInAndUpdatedAtBeforeOrderByUpdatedAtAsc(
+                        STALE_STATES, updatedBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(entity -> new StaleCancellation(
+                        UUID.fromString(entity.getPaymentId()),
+                        UUID.fromString(entity.getId()),
+                        entity.getState(),
+                        entity.getUpdatedAt()))
+                .toList();
     }
 }

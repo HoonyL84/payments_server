@@ -24,6 +24,11 @@ management:
         payments.db.lock.wait: true
         payments.outbox.publish.lag: true
 
+payments:
+  recovery:
+    scheduler-enabled: false
+    fixed-delay: PT30S
+
 logging:
   pattern:
     level: "%5p [traceId=%X{traceId:-none}]"

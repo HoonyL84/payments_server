@@ -1,11 +1,13 @@
 package io.hoony.payment.infrastructure.memory;
 
 import io.hoony.payment.application.port.out.CancellationRepository;
+import io.hoony.payment.application.recovery.StaleCancellation;
 import io.hoony.payment.domain.cancellation.CancellationEvent;
 import io.hoony.payment.domain.cancellation.PaymentCancellation;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -57,5 +59,15 @@ public class InMemoryCancellationRepository implements CancellationRepository {
     @Override
     public List<PaymentCancellation> findAll() {
         return new ArrayList<>(cancellations.values());
+    }
+
+    @Override
+    public List<StaleCancellation> findStaleProcessing(Instant updatedBefore, int limit) {
+        return cancellations.values().stream()
+                .filter(cancellation -> cancellation.state().reservesAmount())
+                .map(cancellation -> new StaleCancellation(
+                        cancellation.paymentId(), cancellation.id(), cancellation.state(), Instant.EPOCH))
+                .limit(limit)
+                .toList();
     }
 }

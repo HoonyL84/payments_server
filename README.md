@@ -33,6 +33,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [8. 취소 금액을 PG 응답 전에 예약한 이유](https://velog.io/@hoonyl/8.-%EC%B7%A8%EC%86%8C-%EA%B8%88%EC%95%A1%EC%9D%84-PG-%EC%9D%91%EB%8B%B5-%EC%A0%84%EC%97%90-%EC%98%88%EC%95%BD%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [9. 결제 서버의 느린 지점을 나눠서 보기](https://velog.io/@hoonyl/9.-%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B2%84%EC%9D%98-%EB%8A%90%EB%A6%B0-%EC%A7%80%EC%A0%90%EC%9D%84-%EB%82%98%EB%88%A0%EC%84%9C-%EB%B3%B4%EA%B8%B0)
 - [10. 부하 테스트에서 TPS보다 먼저 확인한 것](https://velog.io/@hoonyl/10.-%EB%B6%80%ED%95%98-%ED%85%8C%EC%8A%A4%ED%8A%B8%EC%97%90%EC%84%9C-TPS%EB%B3%B4%EB%8B%A4-%EB%A8%BC%EC%A0%80-%ED%99%95%EC%9D%B8%ED%95%9C-%EA%B2%83)
+- [11. 장애 뒤에 남은 결제를 모두 자동 복구하지 않은 이유](https://velog.io/@hoonyl/11.-%EC%9E%A5%EC%95%A0-%EB%92%A4%EC%97%90-%EB%82%A8%EC%9D%80-%EA%B2%B0%EC%A0%9C%EB%A5%BC-%EB%AA%A8%EB%91%90-%EC%9E%90%EB%8F%99-%EB%B3%B5%EA%B5%AC%ED%95%98%EC%A7%80-%EC%95%8A%EC%9D%80-%EC%9D%B4%EC%9C%A0)
 
 ## 테스트 데이터 정책
 
