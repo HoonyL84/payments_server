@@ -1,5 +1,6 @@
 package io.hoony.payment.observability;
 
+import io.hoony.payment.domain.idempotency.IdempotencyOperation;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -26,6 +27,13 @@ public class PaymentMetrics {
 
     public void invalidTransition() {
         counter("payments.state.invalid.transitions").increment();
+    }
+
+    public void idempotencyGate(IdempotencyOperation operation, String outcome, Duration duration) {
+        String operationTag = operation.name().toLowerCase();
+        counter("payments.idempotency.gate", "operation", operationTag, "outcome", outcome).increment();
+        timer("payments.idempotency.gate.duration", "operation", operationTag, "outcome", outcome)
+                .record(duration);
     }
 
     public <T> T time(String metric, String operation, Supplier<T> action) {

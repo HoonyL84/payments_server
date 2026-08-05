@@ -7,6 +7,7 @@ import io.hoony.payment.application.approval.ApprovePaymentService;
 import io.hoony.payment.application.approval.ApprovalTransactionService;
 import io.hoony.payment.application.port.out.IdempotencyRecordRepository;
 import io.hoony.payment.application.port.out.PaymentAttemptRepository;
+import io.hoony.payment.application.port.out.IdempotencyAdmissionGate;
 import io.hoony.payment.application.port.out.PaymentGateway;
 import io.hoony.payment.application.port.out.PaymentRepository;
 import io.hoony.payment.application.query.GetPaymentService;
@@ -185,7 +186,11 @@ class ConfirmPaymentServiceTest {
                     new ObjectMapper(),
                     Clock.systemUTC()
             );
-            this.approvePaymentService = new ApprovePaymentService(transactions, paymentGateway);
+            this.approvePaymentService = new ApprovePaymentService(
+                    transactions,
+                    paymentGateway,
+                    IdempotencyAdmissionGate.bypassing()
+            );
             this.confirmPaymentService = new ConfirmPaymentService(transactions, paymentGateway);
             this.getPaymentService = new GetPaymentService(payments);
         }

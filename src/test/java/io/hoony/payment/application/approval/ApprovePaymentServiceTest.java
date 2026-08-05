@@ -1,6 +1,7 @@
 package io.hoony.payment.application.approval;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.hoony.payment.application.port.out.IdempotencyAdmissionGate;
 import io.hoony.payment.domain.common.ResourceConflictException;
 import io.hoony.payment.domain.idempotency.IdempotencyOperation;
 import io.hoony.payment.domain.idempotency.IdempotencyRecord;
@@ -181,7 +182,10 @@ class ApprovePaymentServiceTest {
                 new ObjectMapper(),
                 clock
         );
-        private final ApprovePaymentService service =
-                new ApprovePaymentService(transactions, gateway);
+        private final ApprovePaymentService service = new ApprovePaymentService(
+                transactions,
+                gateway,
+                IdempotencyAdmissionGate.bypassing()
+        );
     }
 }

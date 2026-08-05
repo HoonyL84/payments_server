@@ -12,3 +12,8 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+payments:
+  idempotency:
+    redis-gate:
+      enabled: true

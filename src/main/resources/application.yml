@@ -3,6 +3,10 @@ spring:
     name: harness-payment-service
   profiles:
     default: local
+  data:
+    redis:
+      repositories:
+        enabled: false
 
 server:
   port: 8080
@@ -25,6 +29,10 @@ management:
         payments.outbox.publish.lag: true
 
 payments:
+  idempotency:
+    redis-gate:
+      enabled: false
+      ttl: PT30S
   recovery:
     scheduler-enabled: false
     fixed-delay: PT30S

@@ -3,12 +3,17 @@ package io.hoony.payment.presentation.testsupport;
 import io.hoony.payment.application.outbox.OutboxRelayService;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import io.hoony.payment.infrastructure.pg.PgApproveStatus;
-import io.hoony.payment.infrastructure.pg.PgConfirmApproveStatus;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,18 +30,22 @@ public class K6TestSupportController {
     private final FakePaymentGateway gateway;
     private final OutboxRelayService outboxRelay;
     private final MeterRegistry meterRegistry;
+    private final StringRedisTemplate redis;
     private volatile double invalidTransitionBaseline;
+    private volatile HotspotMetrics hotspotBaseline = HotspotMetrics.zero();
 
     public K6TestSupportController(
             JdbcTemplate jdbc,
             FakePaymentGateway gateway,
             OutboxRelayService outboxRelay,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            StringRedisTemplate redis
     ) {
         this.jdbc = jdbc;
         this.gateway = gateway;
         this.outboxRelay = outboxRelay;
         this.meterRegistry = meterRegistry;
+        this.redis = redis;
     }
 
     @Transactional
@@ -48,16 +57,25 @@ public class K6TestSupportController {
         jdbc.update("DELETE FROM payment_cancellations");
         jdbc.update("DELETE FROM idempotency_records");
         jdbc.update("DELETE FROM payments");
-        gateway.nextApproveStatus(PgApproveStatus.APPROVED);
-        gateway.nextConfirmApproveStatus(PgConfirmApproveStatus.APPROVED);
-        gateway.nextCancellationStatus(io.hoony.payment.application.port.out.PaymentGateway.CancellationStatus.CANCELED);
+        gateway.reset();
+        redis.execute((RedisCallback<Void>) connection -> {
+            connection.serverCommands().flushDb();
+            return null;
+        });
         invalidTransitionBaseline = invalidTransitionCount();
+        hotspotBaseline = hotspotSnapshot();
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/pg")
     public ResponseEntity<Void> pg(@RequestParam String approve) {
         gateway.nextApproveStatus(PgApproveStatus.valueOf(approve));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/pg-delay")
+    public ResponseEntity<Void> pgDelay(@RequestParam long millis) {
+        gateway.responseDelay(Duration.ofMillis(millis));
         return ResponseEntity.noContent().build();
     }
 
@@ -85,13 +103,86 @@ public class K6TestSupportController {
         );
     }
 
+    @GetMapping("/hotspot")
+    public Map<String, Number> hotspot() {
+        HotspotMetrics current = hotspotSnapshot();
+        Map<String, Number> report = new LinkedHashMap<>();
+        report.put("approveCalls", gateway.approveCallCount());
+        report.put("cancelCalls", gateway.cancelCallCount());
+        report.put("approvalAttempts", count("SELECT COUNT(*) FROM payment_attempts WHERE operation='APPROVE'"));
+        report.put("cancellationAttempts", count("SELECT COUNT(*) FROM payment_attempts WHERE operation='CANCEL'"));
+        report.put("gateAcquired", roundedDelta(current.gateAcquired(), hotspotBaseline.gateAcquired()));
+        report.put("gateRejected", roundedDelta(current.gateRejected(), hotspotBaseline.gateRejected()));
+        report.put("gateConflicts", roundedDelta(current.gateConflicts(), hotspotBaseline.gateConflicts()));
+        report.put("gateBypassed", roundedDelta(current.gateBypassed(), hotspotBaseline.gateBypassed()));
+        report.put("gateUnavailable", roundedDelta(current.gateUnavailable(), hotspotBaseline.gateUnavailable()));
+        report.put("dbTransactionCount", current.dbTransactionCount() - hotspotBaseline.dbTransactionCount());
+        report.put("dbTransactionTotalMillis", current.dbTransactionTotalMillis() - hotspotBaseline.dbTransactionTotalMillis());
+        report.put("lockWaitCount", current.lockWaitCount() - hotspotBaseline.lockWaitCount());
+        report.put("lockWaitTotalMillis", current.lockWaitTotalMillis() - hotspotBaseline.lockWaitTotalMillis());
+        return Map.copyOf(report);
+    }
+
     private double invalidTransitionCount() {
         Counter counter = meterRegistry.find("payments.state.invalid.transitions").counter();
         return counter == null ? 0 : counter.count();
     }
 
+    private HotspotMetrics hotspotSnapshot() {
+        return new HotspotMetrics(
+                gateCount("acquired"),
+                gateCount("rejected"),
+                gateCount("conflict"),
+                gateCount("bypassed") + gateCount("race_bypass"),
+                gateCount("unavailable"),
+                timerCount("payments.db.transaction.duration"),
+                timerTotalMillis("payments.db.transaction.duration"),
+                timerCount("payments.db.lock.wait"),
+                timerTotalMillis("payments.db.lock.wait")
+        );
+    }
+
+    private double gateCount(String outcome) {
+        return meterRegistry.find("payments.idempotency.gate")
+                .tag("outcome", outcome)
+                .counters()
+                .stream()
+                .mapToDouble(Counter::count)
+                .sum();
+    }
+
+    private long timerCount(String name) {
+        return meterRegistry.find(name).timers().stream().mapToLong(Timer::count).sum();
+    }
+
+    private double timerTotalMillis(String name) {
+        return meterRegistry.find(name).timers().stream()
+                .mapToDouble(timer -> timer.totalTime(TimeUnit.MILLISECONDS))
+                .sum();
+    }
+
+    private long roundedDelta(double current, double baseline) {
+        return Math.round(Math.max(0, current - baseline));
+    }
+
     private long count(String sql) {
         Long value = jdbc.queryForObject(sql, Long.class);
         return value == null ? 0 : value;
+    }
+
+    private record HotspotMetrics(
+            double gateAcquired,
+            double gateRejected,
+            double gateConflicts,
+            double gateBypassed,
+            double gateUnavailable,
+            long dbTransactionCount,
+            double dbTransactionTotalMillis,
+            long lockWaitCount,
+            double lockWaitTotalMillis
+    ) {
+        private static HotspotMetrics zero() {
+            return new HotspotMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
     }
 }
