@@ -67,6 +67,18 @@ public class PaymentMetrics {
         counter("payments.outbox.claim.lost", "phase", phase).increment();
     }
 
+    public void providerAdmission(String operation, String outcome) {
+        counter("payments.provider.admission", "operation", operation, "outcome", outcome).increment();
+    }
+
+    public void providerCall(String operation, String outcome) {
+        counter("payments.provider.calls", "operation", operation, "outcome", outcome).increment();
+    }
+
+    public void providerRetry(String operation, String outcome) {
+        counter("payments.provider.retries", "operation", operation, "outcome", outcome).increment();
+    }
+
     public void recovery(String action, String outcome, Duration lag) {
         counter("payments.recovery.results", "action", action, "outcome", outcome).increment();
         timer("payments.reconcile.lag", "action", action).record(lag);

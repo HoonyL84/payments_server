@@ -7,7 +7,8 @@ const bases = [first, second];
 const stormSize = Number(__ENV.STORM_SIZE || 100);
 const bulkSize = Number(__ENV.BULK_SIZE || 40);
 const jsonHeaders = { 'Content-Type': 'application/json' };
-const successOrConflict = http.expectedStatuses(200, 409);
+const successOrConflict = http.expectedStatuses(200, 409, 429);
+const successOrShed = http.expectedStatuses(200, 429);
 
 export const options = {
   scenarios: {
@@ -67,7 +68,7 @@ export default function () {
   const stormResponses = http.batch(stormRequests);
   check(stormResponses, {
     'one approval wins across instances': responses => responses.filter(r => r.status === 200).length === 1,
-    'other concurrent requests are controlled': responses => responses.every(r => [200, 409].includes(r.status))
+    'other concurrent requests are controlled': responses => responses.every(r => [200, 409, 429].includes(r.status))
   });
 
   const replayResponses = bases.map(base => {
@@ -90,10 +91,12 @@ export default function () {
     bases[index % bases.length],
     `multi-order-${index}`,
     `multi-key-${index}`,
-    http.expectedStatuses(200)
+    successOrShed
   )));
+  const bulkAccepted = bulkResponses.filter(response => response.status === 200).length;
   check(bulkResponses, {
-    'distributed unique approvals succeed': responses => responses.every(r => r.status === 200)
+    'distributed unique approvals are processed or shed': responses =>
+      bulkAccepted > 0 && responses.every(r => [200, 429].includes(r.status))
   });
 
   const relayResponses = http.batch(bases.map(base => [
@@ -124,17 +127,23 @@ export default function () {
   post(first, '/internal/v1/test-support/relay-outbox', null, { timeout: '30s' });
 
   const reports = bases.map(base => http.get(`${base}/internal/v1/test-support/multi-instance`).json());
+  const protectionReports = bases.map(base => http.get(`${base}/internal/v1/test-support/overload`).json());
   const totalPgCalls = reports.reduce((sum, report) => sum + report.approveCalls, 0);
   const totalPublishedCalls = reports.reduce((sum, report) => sum + report.outboxPublished, 0);
   const totalClaimed = reports.reduce((sum, report) => sum + report.outboxClaimed, 0);
   const totalGateRejected = reports.reduce((sum, report) => sum + report.gateRejected, 0);
-  const totalOutbox = bulkSize + 1;
+  const totalAdmissionRejected = protectionReports.reduce(
+    (sum, report) => sum + report.admissionRejected,
+    0
+  );
+  const totalOutbox = bulkAccepted + 1;
   check(reports, {
     'both application instances handled PG work': values => values.every(value => value.approveCalls > 0),
     'provider side effects match unique payments': () => totalPgCalls === totalOutbox,
     'outbox publisher side effects are not duplicated': () => totalPublishedCalls === totalOutbox,
     'outbox claims match published events': () => totalClaimed === totalOutbox,
-    'shared Redis rejected the cross-instance storm': () => totalGateRejected >= stormSize - 1,
+    'distributed admission controls the cross-instance storm': () =>
+      totalGateRejected + totalAdmissionRejected >= stormSize - 1,
     'database converged all outbox events': values =>
       values[0].outboxTotal === totalOutbox &&
       values[0].outboxPublishedRows === totalOutbox &&
@@ -148,7 +157,14 @@ export default function () {
       Object.values(report).every(value => value === 0)
   });
 
-  console.log(`MULTI_INSTANCE_REPORT ${JSON.stringify({ reports, totalPgCalls, totalPublishedCalls, totalClaimed })}`);
+  console.log(`MULTI_INSTANCE_REPORT ${JSON.stringify({
+    reports,
+    protectionReports,
+    bulkAccepted,
+    totalPgCalls,
+    totalPublishedCalls,
+    totalClaimed
+  })}`);
 }
 
 export function teardown() {

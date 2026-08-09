@@ -1,9 +1,15 @@
 package io.hoony.payment.presentation.testsupport;
 
+import io.hoony.payment.application.admission.ProviderCapacityGuard;
 import io.hoony.payment.application.outbox.OutboxRelayService;
+import io.hoony.payment.application.port.out.PaymentGateway;
 import io.hoony.payment.config.RuntimeInstanceProperties;
 import io.hoony.payment.infrastructure.pg.FakePaymentGateway;
 import io.hoony.payment.infrastructure.pg.PgApproveStatus;
+import io.hoony.payment.infrastructure.pg.PgConfirmApproveStatus;
+import io.hoony.payment.infrastructure.pg.ProviderCallExecutor;
+import io.hoony.payment.infrastructure.pg.ProviderOperation;
+import io.hoony.payment.infrastructure.pg.ResilientPaymentGateway;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -33,8 +39,12 @@ public class K6TestSupportController {
     private final MeterRegistry meterRegistry;
     private final StringRedisTemplate redis;
     private final RuntimeInstanceProperties runtime;
+    private final ResilientPaymentGateway resilientGateway;
+    private final ProviderCallExecutor providerCalls;
+    private final ProviderCapacityGuard providerCapacity;
     private volatile double invalidTransitionBaseline;
     private volatile HotspotMetrics hotspotBaseline = HotspotMetrics.zero();
+    private volatile ProviderMetrics providerBaseline = ProviderMetrics.zero();
 
     public K6TestSupportController(
             JdbcTemplate jdbc,
@@ -42,7 +52,10 @@ public class K6TestSupportController {
             OutboxRelayService outboxRelay,
             MeterRegistry meterRegistry,
             StringRedisTemplate redis,
-            RuntimeInstanceProperties runtime
+            RuntimeInstanceProperties runtime,
+            ResilientPaymentGateway resilientGateway,
+            ProviderCallExecutor providerCalls,
+            ProviderCapacityGuard providerCapacity
     ) {
         this.jdbc = jdbc;
         this.gateway = gateway;
@@ -50,6 +63,9 @@ public class K6TestSupportController {
         this.meterRegistry = meterRegistry;
         this.redis = redis;
         this.runtime = runtime;
+        this.resilientGateway = resilientGateway;
+        this.providerCalls = providerCalls;
+        this.providerCapacity = providerCapacity;
     }
 
     @Transactional
@@ -62,18 +78,36 @@ public class K6TestSupportController {
         jdbc.update("DELETE FROM idempotency_records");
         jdbc.update("DELETE FROM payments");
         gateway.reset();
+        resilientGateway.resetProtection();
         redis.execute((RedisCallback<Void>) connection -> {
             connection.serverCommands().flushDb();
             return null;
         });
         invalidTransitionBaseline = invalidTransitionCount();
         hotspotBaseline = hotspotSnapshot();
+        providerBaseline = providerSnapshot();
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/pg")
-    public ResponseEntity<Void> pg(@RequestParam String approve) {
+    public ResponseEntity<Void> pg(
+            @RequestParam(defaultValue = "APPROVED") String approve,
+            @RequestParam(defaultValue = "APPROVED") String confirmApprove,
+            @RequestParam(defaultValue = "CANCELED") String cancel,
+            @RequestParam(defaultValue = "CANCELED") String confirmCancel
+    ) {
         gateway.nextApproveStatus(PgApproveStatus.valueOf(approve));
+        gateway.nextConfirmApproveStatus(PgConfirmApproveStatus.valueOf(confirmApprove));
+        gateway.nextCancellationStatus(PaymentGateway.CancellationStatus.valueOf(cancel));
+        gateway.nextCancellationConfirmationStatus(
+                PaymentGateway.CancellationConfirmationStatus.valueOf(confirmCancel)
+        );
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/provider-protection/reset")
+    public ResponseEntity<Void> resetProviderProtection() {
+        resilientGateway.resetProtection();
         return ResponseEntity.noContent().build();
     }
 
@@ -156,6 +190,60 @@ public class K6TestSupportController {
         return Map.copyOf(report);
     }
 
+    @GetMapping("/overload")
+    public Map<String, Object> overload() {
+        ProviderMetrics current = providerSnapshot();
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("instanceId", runtime.instanceId());
+        report.put("approveCalls", gateway.approveCallCount());
+        report.put("confirmApproveCalls", gateway.confirmApproveCallCount());
+        report.put("admissionAccepted", roundedDelta(
+                current.admissionAccepted(), providerBaseline.admissionAccepted()
+        ));
+        report.put("admissionRejected", roundedDelta(
+                current.admissionRejected(), providerBaseline.admissionRejected()
+        ));
+        report.put("retryAttempted", roundedDelta(
+                current.retryAttempted(), providerBaseline.retryAttempted()
+        ));
+        report.put("retrySuppressed", roundedDelta(
+                current.retrySuppressed(), providerBaseline.retrySuppressed()
+        ));
+        report.put("retryBudgetExhausted", roundedDelta(
+                current.retryBudgetExhausted(), providerBaseline.retryBudgetExhausted()
+        ));
+        report.put("providerTimeouts", roundedDelta(
+                current.providerTimeouts(), providerBaseline.providerTimeouts()
+        ));
+        report.put("circuitRejected", roundedDelta(
+                current.circuitRejected(), providerBaseline.circuitRejected()
+        ));
+        report.put("bulkheadRejected", roundedDelta(
+                current.bulkheadRejected(), providerBaseline.bulkheadRejected()
+        ));
+        report.put("commandCircuit", providerCalls.circuitState(ProviderOperation.APPROVE));
+        report.put("confirmCircuit", providerCalls.circuitState(ProviderOperation.CONFIRM_APPROVE));
+        report.put("commandInFlight", providerCapacity.commandInFlight());
+        report.put("inquiryInFlight", providerCapacity.inquiryInFlight());
+        report.put("commandExecutorActive", providerCalls.commandActive());
+        report.put("inquiryExecutorActive", providerCalls.inquiryActive());
+        report.put("inquiryQueued", providerCalls.inquiryQueued());
+        report.put("maxInquiryQueueDepth", providerCalls.maxInquiryQueueDepth());
+        report.put("retryInFlight", providerCalls.retryInFlight());
+        report.put("maxRetryInFlight", providerCalls.maxRetryInFlight());
+        report.put("payments", count("SELECT COUNT(*) FROM payments"));
+        report.put("approvedPayments", count("SELECT COUNT(*) FROM payments WHERE state='APPROVED'"));
+        report.put("pendingPayments", count(
+                "SELECT COUNT(*) FROM payments WHERE state IN ('APPROVING', 'PENDING_CONFIRMATION', 'CONFIRMING')"
+        ));
+        report.put("processingIdempotency", count(
+                "SELECT COUNT(*) FROM idempotency_records WHERE status='PROCESSING'"
+        ));
+        report.put("ledgerDrift", consistency().get("ledgerDrift"));
+        report.put("pendingOutbox", count("SELECT COUNT(*) FROM outbox_events WHERE status='PENDING'"));
+        return Map.copyOf(report);
+    }
+
     private double invalidTransitionCount() {
         Counter counter = meterRegistry.find("payments.state.invalid.transitions").counter();
         return counter == null ? 0 : counter.count();
@@ -176,6 +264,19 @@ public class K6TestSupportController {
                 counterCount("payments.outbox.publish", "outcome", "success"),
                 timerCount("payments.outbox.claim.duration"),
                 timerTotalMillis("payments.outbox.claim.duration")
+        );
+    }
+
+    private ProviderMetrics providerSnapshot() {
+        return new ProviderMetrics(
+                counterCount("payments.provider.admission", "outcome", "accepted"),
+                counterCount("payments.provider.admission", "outcome", "rejected"),
+                counterCount("payments.provider.retries", "outcome", "attempted"),
+                counterCount("payments.provider.retries", "outcome", "suppressed"),
+                counterCount("payments.provider.retries", "outcome", "budget_exhausted"),
+                counterCount("payments.provider.calls", "outcome", "timeout"),
+                counterCount("payments.provider.calls", "outcome", "circuit_rejected"),
+                counterCount("payments.provider.calls", "outcome", "bulkhead_rejected")
         );
     }
 
@@ -211,6 +312,21 @@ public class K6TestSupportController {
     private long count(String sql) {
         Long value = jdbc.queryForObject(sql, Long.class);
         return value == null ? 0 : value;
+    }
+
+    private record ProviderMetrics(
+            double admissionAccepted,
+            double admissionRejected,
+            double retryAttempted,
+            double retrySuppressed,
+            double retryBudgetExhausted,
+            double providerTimeouts,
+            double circuitRejected,
+            double bulkheadRejected
+    ) {
+        private static ProviderMetrics zero() {
+            return new ProviderMetrics(0, 0, 0, 0, 0, 0, 0, 0);
+        }
     }
 
     private record HotspotMetrics(

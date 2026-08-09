@@ -37,6 +37,8 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [12. 기능을 더하기 전에 결제 코어를 다시 확인한 이유](https://velog.io/@hoonyl/12.-%EA%B8%B0%EB%8A%A5%EC%9D%84-%EB%8D%94%ED%95%98%EA%B8%B0-%EC%A0%84%EC%97%90-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%A5%BC-%EB%8B%A4%EC%8B%9C-%ED%99%95%EC%9D%B8%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [13. 같은 결제 요청이 몰릴 때 DB 앞에서 한 번 더 막은 이유](https://velog.io/@hoonyl/13.-%EA%B0%99%EC%9D%80-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%B4-%EB%AA%B0%EB%A6%B4-%EB%95%8C-DB-%EC%95%9E%EC%97%90%EC%84%9C-%ED%95%9C-%EB%B2%88-%EB%8D%94-%EB%A7%89%EC%9D%80-%EC%9D%B4%EC%9C%A0)
 - [14. 결제 서버를 두 대 띄우면 같은 결과가 나오는가](https://velog.io/@hoonyl/14.-%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B2%84%EB%A5%BC-%EB%91%90-%EB%8C%80-%EB%9D%84%EC%9A%B0%EB%A9%B4-%EA%B0%99%EC%9D%80-%EA%B2%B0%EA%B3%BC%EA%B0%80-%EB%82%98%EC%98%A4%EB%8A%94%EA%B0%80)
+- [15. 결제 요청이 몰릴 때 모두 받지 않기로 한 이유](https://velog.io/@hoonyl/15.-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%B4-%EB%AA%B0%EB%A6%B4-%EB%95%8C-%EB%AA%A8%EB%91%90-%EB%B0%9B%EC%A7%80-%EC%95%8A%EA%B8%B0%EB%A1%9C-%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+- [15-1. 결제 코어는 무엇을 통과해야 끝났다고 할 수 있는가](https://velog.io/@hoonyl/15-1.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%8A%94-%EB%AC%B4%EC%97%87%EC%9D%84-%ED%86%B5%EA%B3%BC%ED%95%B4%EC%95%BC-%EB%81%9D%EB%82%AC%EB%8B%A4%EA%B3%A0-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94%EA%B0%80)
 
 ## 테스트 데이터 정책
 

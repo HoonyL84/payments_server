@@ -1,5 +1,7 @@
 package io.hoony.payment.presentation.common;
 
+import io.hoony.payment.application.common.ProviderUnavailableException;
+import io.hoony.payment.application.common.ServiceOverloadedException;
 import io.hoony.payment.domain.common.DomainException;
 import io.hoony.payment.domain.common.ResourceConflictException;
 import io.hoony.payment.domain.common.ResourceNotFoundException;
@@ -9,6 +11,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -58,6 +61,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleConflict(DomainException exception) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiErrorResponse.of("RESOURCE_CONFLICT", exception.getMessage(), currentTraceId()));
+    }
+
+    @ExceptionHandler(ServiceOverloadedException.class)
+    public ResponseEntity<ApiErrorResponse> handleOverloaded(ServiceOverloadedException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(ApiErrorResponse.of("SERVICE_OVERLOADED", exception.getMessage(), currentTraceId()));
+    }
+
+    @ExceptionHandler(ProviderUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleProviderUnavailable(ProviderUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "2")
+                .body(ApiErrorResponse.of("PROVIDER_UNAVAILABLE", exception.getMessage(), currentTraceId()));
     }
 
     @ExceptionHandler(DomainException.class)

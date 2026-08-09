@@ -61,7 +61,10 @@ public class PaymentObservabilityAspect {
         return result;
     }
 
-    @Around("execution(* io.hoony.payment.infrastructure.pg.*.*(..))")
+    @Around("execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.approve(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.confirmApprove(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.cancel(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.confirmCancel(..))")
     public Object pg(ProceedingJoinPoint point) {
         return metrics.time("payments.pg.latency", point.getSignature().getName(), () -> proceed(point));
     }

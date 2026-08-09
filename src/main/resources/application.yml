@@ -39,6 +39,21 @@ payments:
   outbox:
     relay:
       lease-duration: PT30S
+  provider-protection:
+    command-max-concurrent: 16
+    inquiry-max-concurrent: 4
+    inquiry-queue-capacity: 4
+    max-concurrent-retries: 2
+    command-timeout: PT2S
+    inquiry-timeout: PT0.5S
+    inquiry-request-budget: PT2S
+    inquiry-max-attempts: 3
+    retry-initial-backoff: PT0.05S
+    circuit-sliding-window-size: 10
+    circuit-minimum-calls: 5
+    circuit-failure-rate-threshold: 50
+    circuit-open-duration: PT5S
+    circuit-half-open-calls: 2
   recovery:
     scheduler-enabled: false
     fixed-delay: PT30S

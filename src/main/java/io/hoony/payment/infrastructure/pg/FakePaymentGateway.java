@@ -38,6 +38,7 @@ public class FakePaymentGateway implements PaymentGateway {
 
     @Override
     public ConfirmationResult confirmApprove(ConfirmationRequest request) {
+        delayResponse();
         PgConfirmApproveResult result = requestConfirmation(new PgConfirmApproveRequest(request.paymentId()));
         return switch (result.status()) {
             case APPROVED -> ConfirmationResult.approved("fake-confirmed-txn-" + request.providerRequestId());
@@ -59,6 +60,7 @@ public class FakePaymentGateway implements PaymentGateway {
 
     @Override
     public CancellationConfirmationResult confirmCancel(CancellationConfirmationRequest request) {
+        delayResponse();
         confirmCancelCallCount.incrementAndGet();
         return switch (nextCancellationConfirmationStatus) {
             case CANCELED -> CancellationConfirmationResult.canceled(

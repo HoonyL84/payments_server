@@ -5,7 +5,7 @@ const base = __ENV.BASE_URL || 'http://host.docker.internal:8080';
 const expectedGate = (__ENV.EXPECT_REDIS_GATE || 'true') === 'true';
 const stormSize = Number(__ENV.STORM_SIZE || 100);
 const json = { headers: { 'Content-Type': 'application/json' } };
-const successOrConflict = http.expectedStatuses(200, 409);
+const successOrConflict = http.expectedStatuses(200, 409, 429);
 const conflict = http.expectedStatuses(409);
 
 export const options = {
@@ -61,7 +61,7 @@ export default function () {
   const approved = approvalResponses.filter(response => response.status === 200);
   check(approvalResponses, {
     'approval storm has one winner': () => approved.length === 1,
-    'approval duplicates are controlled': responses => responses.every(response => [200, 409].includes(response.status))
+    'approval duplicates are controlled': responses => responses.every(response => [200, 409, 429].includes(response.status))
   });
 
   const paymentId = approved[0].json('paymentId');
@@ -94,7 +94,7 @@ export default function () {
   );
   check(cancellationResponses, {
     'cancellation storm has one winner': responses => responses.filter(response => response.status === 200).length === 1,
-    'cancellation duplicates are controlled': responses => responses.every(response => [200, 409].includes(response.status))
+    'cancellation duplicates are controlled': responses => responses.every(response => [200, 409, 429].includes(response.status))
   });
 
   const cancellationReplay = http.post(
