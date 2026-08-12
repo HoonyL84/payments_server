@@ -94,6 +94,14 @@ jobs:
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 
+      - name: Upload Gradle test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-reports-${{ matrix.os }}
+          path: '**/build/reports/tests/**'
+          if-no-files-found: ignore
+
   # ──────────────────────────────────────────
   # Java / Gradle 프로젝트 감지 시 실행
   # ──────────────────────────────────────────
@@ -125,6 +133,14 @@ jobs:
 
       - name: Build
         run: ./gradlew build -x test
+
+      - name: Upload Gradle test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-reports-java-ci
+          path: '**/build/reports/tests/**'
+          if-no-files-found: ignore
 
   # ──────────────────────────────────────────
   # Node.js / 프론트엔드 프로젝트 감지 시 실행

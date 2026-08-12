@@ -2157,10 +2157,10 @@ async function commandVerify(args) {
     const failureReason = summarizeVerifyFailure(failedStep);
     say(`[Failure] ${failureReason}`);
     if (failedStep.stderr.trim()) {
-      say(`[Failure stderr]\n${failedStep.stderr.trim().slice(-2000)}`);
+      say(`[Failure stderr]\n${failedStep.stderr.trim().slice(-10000)}`);
     }
     if (failedStep.stdout.trim()) {
-      say(`[Failure stdout]\n${failedStep.stdout.trim().slice(-1000)}`);
+      say(`[Failure stdout]\n${failedStep.stdout.trim().slice(-10000)}`);
     }
 
     if (appliedPatchRel) {
