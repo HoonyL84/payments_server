@@ -17,7 +17,9 @@ public class FaultInjectionAspect {
     }
 
     @Around("execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.approve(..)) || " +
-            "execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.cancel(..))")
+            "execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.cancel(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.HttpPaymentGateway.approve(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.HttpPaymentGateway.cancel(..))")
     public Object pgCall(ProceedingJoinPoint point) throws Throwable {
         state.failIfArmed(FailurePoint.BEFORE_PG);
         Object result = point.proceed();
@@ -25,7 +27,8 @@ public class FaultInjectionAspect {
         return result;
     }
 
-    @Around("execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.confirm*(..))")
+    @Around("execution(* io.hoony.payment.infrastructure.pg.FakePaymentGateway.confirm*(..)) || " +
+            "execution(* io.hoony.payment.infrastructure.pg.HttpPaymentGateway.confirm*(..))")
     public Object confirmationCall(ProceedingJoinPoint point) throws Throwable {
         state.failIfArmed(FailurePoint.CONFIRMING_WORKER_STOP);
         return point.proceed();
@@ -37,10 +40,11 @@ public class FaultInjectionAspect {
         return point.proceed();
     }
 
-    @Around("execution(* io.hoony.payment.infrastructure.outbox.*.publish(..))")
+    @Around("execution(* io.hoony.payment.infrastructure.outbox.*.publish(..)) || " +
+            "execution(* io.hoony.payment.application.port.out.OutboxPublisher.publish(..))")
     public Object afterPublish(ProceedingJoinPoint point) throws Throwable {
         Object result = point.proceed();
-        state.failIfArmed(FailurePoint.AFTER_OUTBOX_PUBLISH_BEFORE_STATUS_UPDATE);
+        state.failFatallyIfArmed(FailurePoint.AFTER_OUTBOX_PUBLISH_BEFORE_STATUS_UPDATE);
         return result;
     }
 }

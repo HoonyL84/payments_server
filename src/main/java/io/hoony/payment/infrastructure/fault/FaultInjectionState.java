@@ -17,6 +17,12 @@ public class FaultInjectionState {
         return armed.compareAndSet(point, null);
     }
 
+    public void failFatallyIfArmed(FailurePoint point) {
+        if (consume(point)) {
+            throw new InjectedProcessInterruptionError(point);
+        }
+    }
+
     public void failIfArmed(FailurePoint point) {
         if (consume(point)) {
             throw new InjectedFailureException(point);
