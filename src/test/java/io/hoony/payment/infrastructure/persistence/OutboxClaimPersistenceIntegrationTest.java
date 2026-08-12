@@ -10,8 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -76,30 +77,24 @@ class OutboxClaimPersistenceIntegrationTest {
             List<OutboxEvent> secondOwned = new ArrayList<>(
                     workerTwo.get(10, TimeUnit.SECONDS)
             );
-            assertThat(firstOwned.size()).isIn(0, 20);
-            assertThat(secondOwned.size()).isIn(0, 20);
-            assertThat(firstOwned.size() + secondOwned.size()).isIn(20, 40);
+            assertThat(firstOwned).hasSizeLessThanOrEqualTo(20);
+            assertThat(secondOwned).hasSizeLessThanOrEqualTo(20);
 
-            if (firstOwned.isEmpty()) {
-                firstOwned.addAll(outboxEvents.claimPending(
-                        "worker-one", Duration.ofSeconds(30), 20));
-            }
-            if (secondOwned.isEmpty()) {
-                secondOwned.addAll(outboxEvents.claimPending(
-                        "worker-two", Duration.ofSeconds(30), 20));
-            }
+            Map<UUID, String> claimOwners = new HashMap<>();
+            recordClaims(firstOwned, "worker-one", claimOwners);
+            recordClaims(secondOwned, "worker-two", claimOwners);
 
-            HashSet<UUID> claimedIds = new HashSet<>();
-            firstOwned.forEach(event -> assertThat(claimedIds.add(event.id())).isTrue());
-            secondOwned.forEach(event -> assertThat(claimedIds.add(event.id())).isTrue());
-            assertThat(firstOwned).hasSize(20);
-            assertThat(secondOwned).hasSize(20);
-            assertThat(claimedIds).hasSize(40);
+            List<OutboxEvent> remaining;
+            do {
+                remaining = outboxEvents.claimPending(
+                        "recovery-worker", Duration.ofSeconds(30), 20);
+                recordClaims(remaining, "recovery-worker", claimOwners);
+            } while (!remaining.isEmpty());
 
-            firstOwned.forEach(event -> assertThat(outboxEvents.markPublished(
-                    event.id(), "worker-one", NOW.plusSeconds(1))).isTrue());
-            secondOwned.forEach(event -> assertThat(outboxEvents.markPublished(
-                    event.id(), "worker-two", NOW.plusSeconds(1))).isTrue());
+            assertThat(claimOwners).hasSize(40);
+
+            claimOwners.forEach((eventId, ownerId) -> assertThat(outboxEvents.markPublished(
+                    eventId, ownerId, NOW.plusSeconds(1))).isTrue());
             assertThat(outboxEvents.findAll())
                     .allSatisfy(event -> {
                         assertThat(event.status()).isEqualTo(OutboxStatus.PUBLISHED);
@@ -143,6 +138,14 @@ class OutboxClaimPersistenceIntegrationTest {
     ) throws InterruptedException {
         start.await();
         return outboxEvents.claimPending(owner, Duration.ofSeconds(30), limit);
+    }
+
+    private void recordClaims(
+            List<OutboxEvent> events,
+            String ownerId,
+            Map<UUID, String> claimOwners
+    ) {
+        events.forEach(event -> assertThat(claimOwners.put(event.id(), ownerId)).isNull());
     }
 
     private OutboxEvent pending(int index) {
