@@ -1,6 +1,7 @@
 package io.hoony.payment.infrastructure.pg;
 
 import io.hoony.payment.application.port.out.PaymentGateway;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -9,10 +10,13 @@ import org.springframework.stereotype.Component;
 @Primary
 @Component
 public class ResilientPaymentGateway implements PaymentGateway {
-    private final FakePaymentGateway delegate;
+    private final PaymentGateway delegate;
     private final ProviderCallExecutor calls;
 
-    public ResilientPaymentGateway(FakePaymentGateway delegate, ProviderCallExecutor calls) {
+    public ResilientPaymentGateway(
+            @Qualifier("providerPaymentGateway") PaymentGateway delegate,
+            ProviderCallExecutor calls
+    ) {
         this.delegate = delegate;
         this.calls = calls;
     }

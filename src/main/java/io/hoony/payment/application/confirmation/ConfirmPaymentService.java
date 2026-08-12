@@ -27,7 +27,7 @@ public class ConfirmPaymentService {
                         paymentId,
                         preparation.provider(),
                         preparation.routingKey(),
-                        preparation.providerRequestId()
+                        preparation.originalProviderRequestId()
                 )
         );
         return transactions.completeConfirmation(preparation, gatewayResult);

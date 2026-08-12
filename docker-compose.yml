@@ -48,6 +48,22 @@ services:
       timeout: 5s
       retries: 5
 
+  mock-pg:
+    build:
+      context: .
+      dockerfile: mock-pg-server/Dockerfile
+    image: mock-pg-server:local
+    container_name: payments-mock-pg
+    environment:
+      SERVER_PORT: 8090
+      MOCK_PG_DB_URL: jdbc:h2:file:/app/data/mock-pg;MODE=MySQL;AUTO_SERVER=TRUE
+      PAYMENTS_WEBHOOK_URL: http://app-http:8080/api/v1/pg/webhooks
+      PAYMENTS_WEBHOOK_SECRET: local-webhook-secret
+    ports:
+      - "8090:8090"
+    volumes:
+      - mock_pg_data:/app/data
+
   app-one:
     <<: *payment-app
     environment:
@@ -63,6 +79,24 @@ services:
       PAYMENTS_INSTANCE_ID: app-two
     ports:
       - "8082:8080"
+
+  app-http:
+    <<: *payment-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-pg:
+        condition: service_started
+    environment:
+      <<: *payment-environment
+      PAYMENTS_INSTANCE_ID: app-http
+      PAYMENTS_PG_MODE: http
+      PAYMENTS_PG_BASE_URL: http://mock-pg:8090
+      PAYMENTS_WEBHOOK_SECRET: local-webhook-secret
+    ports:
+      - "8083:8080"
 
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -135,5 +169,6 @@ services:
 
 volumes:
   payments_mysql_data:
+  mock_pg_data:
   redis_data:
   es_data:

@@ -13,6 +13,8 @@ public interface PaymentAttemptRepository {
 
     Optional<PaymentAttempt> findById(UUID id);
 
+    Optional<PaymentAttempt> findLatest(UUID paymentId, PaymentOperation operation);
+
     Optional<PaymentAttempt> findLatestSuccessful(UUID paymentId, PaymentOperation operation);
 
     List<PaymentAttempt> findAll();

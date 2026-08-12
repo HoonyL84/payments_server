@@ -39,6 +39,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [14. 결제 서버를 두 대 띄우면 같은 결과가 나오는가](https://velog.io/@hoonyl/14.-%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B2%84%EB%A5%BC-%EB%91%90-%EB%8C%80-%EB%9D%84%EC%9A%B0%EB%A9%B4-%EA%B0%99%EC%9D%80-%EA%B2%B0%EA%B3%BC%EA%B0%80-%EB%82%98%EC%98%A4%EB%8A%94%EA%B0%80)
 - [15. 결제 요청이 몰릴 때 모두 받지 않기로 한 이유](https://velog.io/@hoonyl/15.-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%B4-%EB%AA%B0%EB%A6%B4-%EB%95%8C-%EB%AA%A8%EB%91%90-%EB%B0%9B%EC%A7%80-%EC%95%8A%EA%B8%B0%EB%A1%9C-%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [15-1. 결제 코어는 무엇을 통과해야 끝났다고 할 수 있는가](https://velog.io/@hoonyl/15-1.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%8A%94-%EB%AC%B4%EC%97%87%EC%9D%84-%ED%86%B5%EA%B3%BC%ED%95%B4%EC%95%BC-%EB%81%9D%EB%82%AC%EB%8B%A4%EA%B3%A0-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94%EA%B0%80)
+- [16. PG timeout을 실제 네트워크 경계에서 다시 검증한 이유](https://velog.io/@hoonyl/16.-PG-timeout%EC%9D%84-%EC%8B%A4%EC%A0%9C-%EB%84%A4%ED%8A%B8%EC%9B%8C%ED%81%AC-%EA%B2%BD%EA%B3%84%EC%97%90%EC%84%9C-%EB%8B%A4%EC%8B%9C-%EA%B2%80%EC%A6%9D%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 
 ## 테스트 데이터 정책
 

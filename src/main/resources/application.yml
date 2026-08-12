@@ -30,6 +30,13 @@ management:
         payments.outbox.claim.duration: true
 
 payments:
+  pg:
+    mode: ${PAYMENTS_PG_MODE:fake}
+    base-url: ${PAYMENTS_PG_BASE_URL:http://localhost:8090}
+    connect-timeout: PT0.3S
+    read-timeout: PT2S
+    webhook-secret: ${PAYMENTS_WEBHOOK_SECRET:local-webhook-secret}
+    webhook-max-age: PT5M
   runtime:
     instance-id: ${PAYMENTS_INSTANCE_ID:${random.uuid}}
   idempotency:

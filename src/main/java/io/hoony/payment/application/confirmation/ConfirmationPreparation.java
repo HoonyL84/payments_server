@@ -7,6 +7,6 @@ public record ConfirmationPreparation(
         UUID attemptId,
         String provider,
         String routingKey,
-        String providerRequestId
+        String originalProviderRequestId
 ) {
 }

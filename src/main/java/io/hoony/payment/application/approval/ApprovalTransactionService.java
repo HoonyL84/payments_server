@@ -208,6 +208,9 @@ public class ApprovalTransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Merchant not found."));
         merchant.requireActive();
 
+        PaymentAttempt originalAttempt = paymentAttempts.findLatest(paymentId, PaymentOperation.APPROVE)
+                .orElseThrow(() -> new ResourceConflictException("Original approval attempt was not found."));
+
         if (!payments.claimForConfirmation(paymentId)) {
             throw new ResourceConflictException("Payment confirmation is already claimed.");
         }
@@ -228,7 +231,7 @@ public class ApprovalTransactionService {
                 attemptId,
                 merchant.provider(),
                 merchant.routingKey(),
-                attempt.providerRequestId()
+                originalAttempt.providerRequestId()
         );
     }
 

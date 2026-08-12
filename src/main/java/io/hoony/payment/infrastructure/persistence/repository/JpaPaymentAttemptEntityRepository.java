@@ -10,6 +10,11 @@ import java.util.Optional;
 public interface JpaPaymentAttemptEntityRepository
         extends JpaRepository<PaymentAttemptEntity, String> {
 
+    Optional<PaymentAttemptEntity> findFirstByPaymentIdAndOperationOrderByStartedAtDesc(
+            String paymentId,
+            PaymentOperation operation
+    );
+
     Optional<PaymentAttemptEntity> findFirstByPaymentIdAndOperationAndResultOrderByCompletedAtDesc(
             String paymentId,
             PaymentOperation operation,

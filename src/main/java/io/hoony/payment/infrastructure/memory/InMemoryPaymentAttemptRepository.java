@@ -31,6 +31,13 @@ public class InMemoryPaymentAttemptRepository implements PaymentAttemptRepositor
     }
 
     @Override
+    public Optional<PaymentAttempt> findLatest(UUID paymentId, PaymentOperation operation) {
+        return attempts.values().stream()
+                .filter(attempt -> attempt.paymentId().equals(paymentId))
+                .filter(attempt -> attempt.operation() == operation)
+                .max(java.util.Comparator.comparing(PaymentAttempt::startedAt));
+    }
+    @Override
     public Optional<PaymentAttempt> findLatestSuccessful(UUID paymentId, PaymentOperation operation) {
         return attempts.values().stream()
                 .filter(attempt -> attempt.paymentId().equals(paymentId))

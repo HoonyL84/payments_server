@@ -37,6 +37,12 @@ public class JpaPaymentAttemptRepositoryAdapter implements PaymentAttemptReposit
     }
 
     @Override
+    public Optional<PaymentAttempt> findLatest(UUID paymentId, PaymentOperation operation) {
+        return repository.findFirstByPaymentIdAndOperationOrderByStartedAtDesc(
+                        paymentId.toString(), operation)
+                .map(PaymentAttemptEntity::toDomain);
+    }
+    @Override
     public Optional<PaymentAttempt> findLatestSuccessful(UUID paymentId, PaymentOperation operation) {
         return repository.findFirstByPaymentIdAndOperationAndResultOrderByCompletedAtDesc(
                 paymentId.toString(),

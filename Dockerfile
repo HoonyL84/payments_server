@@ -3,10 +3,11 @@ WORKDIR /workspace
 
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
+COPY mock-pg-server/build.gradle.kts mock-pg-server/build.gradle.kts
 RUN chmod +x gradlew && ./gradlew dependencies --configuration runtimeClasspath --quiet --no-daemon
 
 COPY src ./src
-RUN ./gradlew bootJar --no-daemon
+RUN ./gradlew :bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

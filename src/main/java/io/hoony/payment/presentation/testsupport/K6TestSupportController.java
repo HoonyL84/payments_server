@@ -71,6 +71,7 @@ public class K6TestSupportController {
     @Transactional
     @PostMapping("/reset")
     public ResponseEntity<Void> reset() {
+        jdbc.update("DELETE FROM pg_webhook_receipts");
         jdbc.update("DELETE FROM ledger_entries");
         jdbc.update("DELETE FROM outbox_events");
         jdbc.update("DELETE FROM payment_attempts");
