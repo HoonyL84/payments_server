@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: payment-event-consumer
+  datasource:
+    url: ${PAYMENTS_DB_URL:jdbc:mysql://localhost:3306/payments?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${PAYMENTS_DB_USERNAME:payments}
+    password: ${PAYMENTS_DB_PASSWORD:payments}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+payments:
+  consumer:
+    topic: payments.events.v1
+    partitions: 6
+
+server:
+  port: ${SERVER_PORT:8091}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

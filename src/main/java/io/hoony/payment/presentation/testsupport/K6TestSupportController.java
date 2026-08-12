@@ -71,6 +71,9 @@ public class K6TestSupportController {
     @Transactional
     @PostMapping("/reset")
     public ResponseEntity<Void> reset() {
+        jdbc.update("DELETE FROM payment_event_effects");
+        jdbc.update("DELETE FROM consumer_aggregate_progress");
+        jdbc.update("DELETE FROM processed_events");
         jdbc.update("DELETE FROM pg_webhook_receipts");
         jdbc.update("DELETE FROM ledger_entries");
         jdbc.update("DELETE FROM outbox_events");
@@ -143,6 +146,8 @@ public class K6TestSupportController {
                 "processingIdempotency", count("SELECT COUNT(*) FROM idempotency_records WHERE status='PROCESSING'"),
                 "pendingConfirmations", count("SELECT (SELECT COUNT(*) FROM payments WHERE state IN ('PENDING_CONFIRMATION', 'CONFIRMING')) + (SELECT COUNT(*) FROM payment_cancellations WHERE state IN ('CANCEL_PENDING_CONFIRMATION', 'CANCEL_CONFIRMING'))"),
                 "pendingOutbox", count("SELECT COUNT(*) FROM outbox_events WHERE status='PENDING'"),
+                "processedEvents", count("SELECT COUNT(*) FROM processed_events"),
+                "paymentEventEffects", count("SELECT COUNT(*) FROM payment_event_effects"),
                 "invalidTransitions", Math.round(Math.max(0, invalidTransitionCount() - invalidTransitionBaseline))
         );
     }

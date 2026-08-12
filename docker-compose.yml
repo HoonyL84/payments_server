@@ -87,6 +87,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
       mock-pg:
         condition: service_started
     environment:
@@ -95,8 +97,26 @@ services:
       PAYMENTS_PG_MODE: http
       PAYMENTS_PG_BASE_URL: http://mock-pg:8090
       PAYMENTS_WEBHOOK_SECRET: local-webhook-secret
+      PAYMENTS_OUTBOX_PUBLISHER: kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     ports:
       - "8083:8080"
+
+  payment-consumer:
+    build:
+      context: .
+      dockerfile: payment-event-consumer/Dockerfile
+    image: payment-event-consumer:local
+    depends_on:
+      app-http:
+        condition: service_started
+      kafka:
+        condition: service_started
+    environment:
+      PAYMENTS_DB_URL: jdbc:mysql://mysql:3306/payments?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      PAYMENTS_DB_USERNAME: payments
+      PAYMENTS_DB_PASSWORD: payments
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -151,9 +171,13 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_LISTENERS: HOST://0.0.0.0:9092,DOCKER://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9092,DOCKER://kafka:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_MS: 604800000
 
   elasticsearch:
     image: elasticsearch:8.13.0

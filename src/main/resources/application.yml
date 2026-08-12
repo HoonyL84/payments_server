@@ -3,6 +3,14 @@ spring:
     name: harness-payment-service
   profiles:
     default: local
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
   data:
     redis:
       repositories:
@@ -44,6 +52,12 @@ payments:
       enabled: false
       ttl: PT30S
   outbox:
+    publisher: ${PAYMENTS_OUTBOX_PUBLISHER:log}
+    kafka:
+      topic: payments.events.v1
+      partitions: 6
+      schema-version: 1
+      send-timeout: PT5S
     relay:
       lease-duration: PT30S
   provider-protection:

@@ -4,9 +4,11 @@ import io.hoony.payment.application.port.out.OutboxPublisher;
 import io.hoony.payment.domain.outbox.OutboxEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnProperty(name = "payments.outbox.publisher", havingValue = "log", matchIfMissing = true)
 public class LoggingOutboxPublisher implements OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingOutboxPublisher.class);
