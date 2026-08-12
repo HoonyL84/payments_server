@@ -109,6 +109,37 @@ public class PgTransactionStore {
         ), Timestamp.from(from), Timestamp.from(cursorTime), Timestamp.from(cursorTime), cursorValue, limit);
     }
 
+    public void seedReconciliationDataset(int size) {
+        jdbc.update("DELETE FROM pg_transactions WHERE provider_request_id LIKE 'batch-approve-%'");
+        Instant now = Instant.now();
+        for (int start = 1; start <= size; start += 1_000) {
+            int end = Math.min(size, start + 999);
+            List<Integer> indexes = java.util.stream.IntStream.rangeClosed(start, end)
+                    .boxed()
+                    .toList();
+            jdbc.batchUpdate("""
+                    INSERT INTO pg_transactions(
+                        provider_request_id, operation, payment_id, cancellation_id,
+                        merchant_id, order_id, amount_minor_units, currency,
+                        original_provider_transaction_id, fingerprint, status,
+                        provider_transaction_id, error_code, created_at, updated_at
+                    ) VALUES (?, 'APPROVE', ?, NULL, 'reconciliation-fixture', ?, 1000, 'KRW',
+                              NULL, ?, ?, ?, ?, ?, ?)
+                    """, indexes, 1_000, (statement, index) -> {
+                boolean declined = index % 100 == 0;
+                statement.setString(1, "batch-approve-" + index);
+                statement.setString(2, new UUID(0L, index).toString());
+                statement.setString(3, "batch-order-" + index);
+                statement.setString(4, String.format("%064x", index));
+                statement.setString(5, declined ? "DECLINED" : "APPROVED");
+                statement.setString(6, declined ? null : "mock-pg-batch-" + index);
+                statement.setString(7, declined ? "DECLINED" : null);
+                statement.setTimestamp(8, Timestamp.from(now));
+                statement.setTimestamp(9, Timestamp.from(now));
+            });
+        }
+    }
+
     public void deleteAll() {
         jdbc.update("DELETE FROM pg_transactions");
     }

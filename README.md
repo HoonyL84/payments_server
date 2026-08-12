@@ -41,6 +41,7 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [15-1. 결제 코어는 무엇을 통과해야 끝났다고 할 수 있는가](https://velog.io/@hoonyl/15-1.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%8A%94-%EB%AC%B4%EC%97%87%EC%9D%84-%ED%86%B5%EA%B3%BC%ED%95%B4%EC%95%BC-%EB%81%9D%EB%82%AC%EB%8B%A4%EA%B3%A0-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94%EA%B0%80)
 - [16. PG timeout을 실제 네트워크 경계에서 다시 검증한 이유](https://velog.io/@hoonyl/16.-PG-timeout%EC%9D%84-%EC%8B%A4%EC%A0%9C-%EB%84%A4%ED%8A%B8%EC%9B%8C%ED%81%AC-%EA%B2%BD%EA%B3%84%EC%97%90%EC%84%9C-%EB%8B%A4%EC%8B%9C-%EA%B2%80%EC%A6%9D%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [17. Outbox를 Kafka에 보낸 뒤에도 중복을 전제로 한 이유](https://velog.io/@hoonyl/17.-Outbox%EB%A5%BC-Kafka%EC%97%90-%EB%B3%B4%EB%82%B8-%EB%92%A4%EC%97%90%EB%8F%84-%EC%A4%91%EB%B3%B5%EC%9D%84-%EC%A0%84%EC%A0%9C%EB%A1%9C-%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+- [18. 결제 대사 배치를 처음부터 다시 돌리지 않게 만든 이유](https://velog.io/@hoonyl/18.-%EA%B2%B0%EC%A0%9C-%EB%8C%80%EC%82%AC-%EB%B0%B0%EC%B9%98%EB%A5%BC-%EC%B2%98%EC%9D%8C%EB%B6%80%ED%84%B0-%EB%8B%A4%EC%8B%9C-%EB%8F%8C%EB%A6%AC%EC%A7%80-%EC%95%8A%EA%B2%8C-%EB%A7%8C%EB%93%A0-%EC%9D%B4%EC%9C%A0)
 
 ## 테스트 데이터 정책
 

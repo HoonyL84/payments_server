@@ -26,6 +26,16 @@ public class MockPgTestSupportController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/dataset")
+    public ResponseEntity<Void> dataset(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "100000") int size
+    ) {
+        if (size < 1 || size > 200_000) {
+            throw new IllegalArgumentException("Dataset size must be between 1 and 200000.");
+        }
+        transactions.seedReconciliationDataset(size);
+        return ResponseEntity.noContent().build();
+    }
     @PutMapping("/behavior")
     public ResponseEntity<Void> configure(@RequestBody MockPgBehavior.Configuration configuration) {
         behavior.configure(configuration);

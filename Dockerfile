@@ -5,6 +5,7 @@ COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 COPY mock-pg-server/build.gradle.kts mock-pg-server/build.gradle.kts
 COPY payment-event-consumer/build.gradle.kts payment-event-consumer/build.gradle.kts
+COPY reconciliation-batch/build.gradle.kts reconciliation-batch/build.gradle.kts
 RUN chmod +x gradlew && ./gradlew dependencies --configuration runtimeClasspath --quiet --no-daemon
 
 COPY src ./src

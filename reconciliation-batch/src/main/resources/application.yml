@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: reconciliation-batch
+  datasource:
+    url: ${PAYMENTS_DB_URL:jdbc:mysql://localhost:3307/payments_reconciliation?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true}
+    username: ${PAYMENTS_DB_USERNAME:payments}
+    password: ${PAYMENTS_DB_PASSWORD:payments}
+    hikari:
+      maximum-pool-size: 6
+      minimum-idle: 1
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+  sql:
+    init:
+      continue-on-error: true
+
+server:
+  port: ${SERVER_PORT:8092}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+reconciliation:
+  mock-pg-base-url: ${MOCK_PG_BASE_URL:http://localhost:8090}
+  page-size: 500
+  chunk-size: 500
+  dataset-enabled: ${RECONCILIATION_DATASET_ENABLED:false}
