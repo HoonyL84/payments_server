@@ -45,6 +45,8 @@ Java 21과 Spring Boot 기반의 결제 코어 프로젝트입니다.
 - [19. 의존성 장애를 실제 네트워크에서 끊어 본 이유](https://velog.io/@hoonyl/19.-%EC%9D%98%EC%A1%B4%EC%84%B1-%EC%9E%A5%EC%95%A0%EB%A5%BC-%EC%8B%A4%EC%A0%9C-%EB%84%A4%ED%8A%B8%EC%9B%8C%ED%81%AC%EC%97%90%EC%84%9C-%EB%81%8A%EC%96%B4-%EB%B3%B8-%EC%9D%B4%EC%9C%A0)
 - [20. 결제 서버의 최대 TPS보다 포화가 시작되는 지점을 본 이유](https://velog.io/@hoonyl/20.-%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B2%84%EC%9D%98-%EC%B5%9C%EB%8C%80-TPS%EB%B3%B4%EB%8B%A4-%ED%8F%AC%ED%99%94%EA%B0%80-%EC%8B%9C%EC%9E%91%EB%90%98%EB%8A%94-%EC%A7%80%EC%A0%90%EC%9D%84-%EB%B3%B8-%EC%9D%B4%EC%9C%A0)
 
+- [21. Sharding을 구현하지 않기로 결정한 이유](https://velog.io/@hoonyl/21.-Sharding%EC%9D%84-%EA%B5%AC%ED%98%84%ED%95%98%EC%A7%80-%EC%95%8A%EA%B8%B0%EB%A1%9C-%EA%B2%B0%EC%A0%95%ED%95%9C-%EC%9D%B4%EC%9C%A0)
+
 ## 테스트 데이터 정책
 
 이 프로젝트는 상시 운영 서버가 아니라 반복 가능한 로컬/k6 검증 환경을 기준으로 합니다.
