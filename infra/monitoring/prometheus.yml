@@ -1,6 +1,10 @@
 global:
   scrape_interval: 5s
 scrape_configs:
+  - job_name: payments-capacity
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app-capacity:8080"]
   - job_name: payments-local
     metrics_path: /actuator/prometheus
     static_configs:

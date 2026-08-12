@@ -156,6 +156,100 @@ services:
     ports:
       - "8092:8092"
 
+  capacity-mysql:
+    image: mysql:8.4
+    container_name: payments-capacity-mysql
+    profiles: ["capacity"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: payments_capacity
+      MYSQL_USER: payments
+      MYSQL_PASSWORD: payments
+    ports:
+      - "3308:3306"
+    volumes:
+      - capacity_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  capacity-redis:
+    image: redis:7-alpine
+    container_name: payments-capacity-redis
+    profiles: ["capacity"]
+    command: redis-server --appendonly no
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mock-pg-capacity:
+    build:
+      context: .
+      dockerfile: mock-pg-server/Dockerfile
+    image: mock-pg-server:local
+    profiles: ["capacity"]
+    environment:
+      SERVER_PORT: 8090
+      MOCK_PG_DB_URL: jdbc:h2:file:/app/data/mock-pg-capacity;MODE=MySQL;AUTO_SERVER=TRUE
+      PAYMENTS_WEBHOOK_URL: http://app-capacity:8080/api/v1/pg/webhooks
+      PAYMENTS_WEBHOOK_SECRET: capacity-webhook-secret
+    ports:
+      - "8093:8090"
+    volumes:
+      - mock_pg_capacity_data:/app/data
+
+  app-capacity:
+    <<: *payment-app
+    profiles: ["capacity"]
+    depends_on:
+      capacity-mysql:
+        condition: service_healthy
+      capacity-redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      mock-pg-capacity:
+        condition: service_started
+    environment:
+      <<: *payment-environment
+      PAYMENTS_INSTANCE_ID: app-capacity
+      PAYMENTS_DB_URL: jdbc:mysql://capacity-mysql:3306/payments_capacity?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true
+      SPRING_DATA_REDIS_HOST: capacity-redis
+      SPRING_DATA_REDIS_PORT: 6379
+      PAYMENTS_PG_MODE: http
+      PAYMENTS_PG_BASE_URL: http://mock-pg-capacity:8090
+      PAYMENTS_WEBHOOK_SECRET: capacity-webhook-secret
+      PAYMENTS_OUTBOX_PUBLISHER: kafka
+      PAYMENTS_OUTBOX_KAFKA_TOPIC: payments.capacity.v1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - "8085:8080"
+
+  payment-consumer-capacity:
+    build:
+      context: .
+      dockerfile: payment-event-consumer/Dockerfile
+    image: payment-event-consumer:local
+    profiles: ["capacity"]
+    depends_on:
+      capacity-mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      PAYMENTS_DB_URL: jdbc:mysql://capacity-mysql:3306/payments_capacity?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      PAYMENTS_DB_USERNAME: payments
+      PAYMENTS_DB_PASSWORD: payments
+      PAYMENTS_CONSUMER_TOPIC: payments.capacity.v1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SERVER_PORT: 8091
+
   chaos-mysql:
     image: mysql:8.4
     container_name: payments-chaos-mysql
@@ -366,6 +460,8 @@ volumes:
   reconciliation_mysql_data:
   mock_pg_data:
   redis_data:
+  capacity_mysql_data:
+  mock_pg_capacity_data:
   chaos_mysql_data:
   mock_pg_chaos_data:
   es_data:
