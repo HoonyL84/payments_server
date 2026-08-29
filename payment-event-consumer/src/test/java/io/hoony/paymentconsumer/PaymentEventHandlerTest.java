@@ -7,6 +7,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -14,6 +16,7 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @JdbcTest
 @Import({PaymentEventHandler.class, PaymentEventHandlerTest.ClockConfiguration.class})
@@ -73,14 +76,17 @@ class PaymentEventHandlerTest {
     }
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void olderEventDoesNotOverwriteAggregateProgress() {
         UUID aggregateId = UUID.randomUUID();
         PaymentEventEnvelope newer = event(aggregateId, "2026-07-31T09:59:00Z");
         PaymentEventEnvelope older = event(aggregateId, "2026-07-31T09:58:00Z");
 
         assertThat(handler.handle(newer)).isEqualTo(PaymentEventHandler.Result.PROCESSED);
-        assertThat(handler.handle(older)).isEqualTo(PaymentEventHandler.Result.OUT_OF_ORDER);
+        assertThatThrownBy(() -> handler.handle(older))
+                .isInstanceOf(OutOfOrderPaymentEventException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_event_effects", Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM processed_events", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject(
                 "SELECT last_event_id FROM consumer_aggregate_progress WHERE aggregate_id = ?",
                 String.class,

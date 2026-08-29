@@ -49,7 +49,9 @@ public class PaymentEventHandler {
                 CONSUMER_GROUP, event.aggregateId().toString());
 
         if (!progress.isEmpty() && event.occurredAt().isBefore(progress.getFirst())) {
-            return Result.OUT_OF_ORDER;
+            throw new OutOfOrderPaymentEventException(
+                    "Payment event occurred before aggregate progress. eventId=" + event.eventId()
+            );
         }
 
         jdbc.update("""
@@ -88,7 +90,6 @@ public class PaymentEventHandler {
 
     public enum Result {
         PROCESSED,
-        DUPLICATE,
-        OUT_OF_ORDER
+        DUPLICATE
     }
 }

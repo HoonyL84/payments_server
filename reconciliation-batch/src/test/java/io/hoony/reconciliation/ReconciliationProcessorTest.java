@@ -49,6 +49,16 @@ class ReconciliationProcessorTest {
                 ReconciliationModel.CaseType.KAFKA_CONSUMPTION_MISSING,
                 ReconciliationModel.Classification.AUTO_CORRECT
         );
+        assertFinding(
+                processor.process(row("APPROVED", "APPROVED", 1000, 1000, 2, 0, 1)),
+                ReconciliationModel.CaseType.KAFKA_CONSUMPTION_MISSING,
+                ReconciliationModel.Classification.AUTO_CORRECT
+        );
+        assertFinding(
+                processor.process(row("APPROVED", "APPROVED", 1000, 1000, 1, 0, 2)),
+                ReconciliationModel.CaseType.KAFKA_CONSUMPTION_MISSING,
+                ReconciliationModel.Classification.MANUAL_REVIEW
+        );
     }
 
     @Test

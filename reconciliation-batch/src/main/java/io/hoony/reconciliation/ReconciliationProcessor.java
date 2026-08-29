@@ -138,14 +138,23 @@ final class ReconciliationProcessor
                     "Outbox relay command can be retried safely.",
                     "RELAY_OUTBOX"
             ));
-        } else if (row.publishedOutboxCount() > 0 && row.consumerEffectCount() == 0) {
+        } else if (row.publishedOutboxCount() > row.consumerEffectCount()) {
             findings.add(finding(
                     ReconciliationModel.CaseType.KAFKA_CONSUMPTION_MISSING,
                     ReconciliationModel.Classification.AUTO_CORRECT,
-                    "consumer side effect",
-                    "0",
-                    "Published event has no consumer side effect.",
+                    Long.toString(row.publishedOutboxCount()),
+                    Long.toString(row.consumerEffectCount()),
+                    "Published events are missing consumer side effects.",
                     "REPLAY_EVENT"
+            ));
+        } else if (row.consumerEffectCount() > row.publishedOutboxCount()) {
+            findings.add(finding(
+                    ReconciliationModel.CaseType.KAFKA_CONSUMPTION_MISSING,
+                    ReconciliationModel.Classification.MANUAL_REVIEW,
+                    Long.toString(row.publishedOutboxCount()),
+                    Long.toString(row.consumerEffectCount()),
+                    "Consumer side effects exceed published events.",
+                    null
             ));
         }
     }

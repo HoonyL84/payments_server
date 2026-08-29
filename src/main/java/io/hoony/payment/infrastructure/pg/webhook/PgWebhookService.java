@@ -46,8 +46,11 @@ public class PgWebhookService {
             receipts.complete(event.eventId(), Instant.now(clock));
             return Result.PROCESSED;
         } catch (DomainException exception) {
-            receipts.complete(event.eventId(), Instant.now(clock));
-            return Result.IGNORED;
+            receipts.release(event.eventId());
+            throw new PgWebhookRetryableException(
+                    "PG webhook could not be applied to the current payment state.",
+                    exception
+            );
         } catch (RuntimeException exception) {
             receipts.release(event.eventId());
             throw exception;
@@ -67,7 +70,6 @@ public class PgWebhookService {
 
     public enum Result {
         PROCESSED,
-        DUPLICATE,
-        IGNORED
+        DUPLICATE
     }
 }
