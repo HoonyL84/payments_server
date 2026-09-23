@@ -72,7 +72,7 @@ harness-payment-service/
 - [1. 결제 코어의 경계를 먼저 정한 이유](https://velog.io/@hoonyl/1.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EC%9D%98-%EA%B2%BD%EA%B3%84%EB%A5%BC-%EB%A8%BC%EC%A0%80-%EC%A0%95%ED%95%9C-%EC%9D%B4%EC%9C%A0)
 - [2. 결제 요청은 어디서부터 통제해야 하는가](https://velog.io/@hoonyl/2.-%EA%B2%B0%EC%A0%9C-%EC%9A%94%EC%B2%AD%EC%9D%80-%EC%96%B4%EB%94%94%EC%84%9C%EB%B6%80%ED%84%B0-%ED%86%B5%EC%A0%9C%ED%95%B4%EC%95%BC-%ED%95%98%EB%8A%94%EA%B0%80)
 - [3. 결제 코어를 올릴 실행 골격](https://velog.io/@hoonyl/3.-%EA%B2%B0%EC%A0%9C-%EC%BD%94%EC%96%B4%EB%A5%BC-%EC%98%AC%EB%A6%B4-%EC%8B%A4%ED%96%89-%EA%B3%A8%EA%B2%A9)
-- [4. 결제는 상태 전이로 먼저 모델링해야 한다](https://velog.io/@hoonyl/4.-%EA%B2%B0%EC%A0%9C-%EB%8A%94-%EC%83%81%ED%83%9C-%EC%A0%84%EC%9D%B4%EB%A1%9C-%EB%A8%BC%EC%A0%80-%EB%AA%A8%EB%8D%B8%EB%A7%81%ED%95%B4%EC%95%BC-%ED%95%9C%EB%8B%A4)
+- [4. 결제는 상태 전이로 먼저 모델링해야 한다](https://velog.io/@hoonyl/4.-%EA%B2%B0%EC%A0%9C%EB%8A%94-%EC%83%81%ED%83%9C-%EC%A0%84%EC%9D%B4%EB%A1%9C-%EB%A8%BC%EC%A0%80-%EB%AA%A8%EB%8D%B8%EB%A7%81%ED%95%B4%EC%95%BC-%ED%95%9C%EB%8B%A4)
 - [5. 결제 승인은 API보다 중복 호출 방지가 먼저다](https://velog.io/@hoonyl/5.-%EA%B2%B0%EC%A0%9C-%EC%8A%B9%EC%9D%B8%EC%9D%80-API%EB%B3%B4%EB%8B%A4-%EC%A4%91%EB%B3%B5-%ED%98%B8%EC%B6%9C-%EB%B0%A9%EC%A7%80%EA%B0%80-%EB%A8%BC%EC%A0%80%EB%8B%A4)
 - [6. PG timeout은 실패가 아니라 확인이 필요한 상태다](https://velog.io/@hoonyl/6.-PG-timeout%EC%9D%80-%EC%8B%A4%ED%8C%A8%EA%B0%80-%EC%95%84%EB%8B%88%EB%9D%BC-%ED%99%95%EC%9D%B8%EC%9D%B4-%ED%95%84%EC%9A%94%ED%95%9C-%EC%83%81%ED%83%9C%EB%8B%A4)
 - [7. PG 호출을 DB 트랜잭션 밖으로 분리한 이유](https://velog.io/@hoonyl/7.-PG-%ED%98%B8%EC%B6%9C%EC%9D%84-DB-%ED%8A%B8%EB%9E%9C%EC%9E%AD%EC%85%98-%EB%B0%96%EC%9C%BC%EB%A1%9C-%EB%B6%84%EB%A6%AC%ED%95%9C-%EC%9D%B4%EC%9C%A0)
