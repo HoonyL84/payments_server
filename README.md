@@ -1,11 +1,11 @@
-# 💳 Payment Lifecycle Orchestration Core
+# Payment Lifecycle Orchestration Core
 
 > **High-Reliability Payment Orchestration Engine (Java 21 · Spring Boot 3.5)**  
 > 단순한 커머스 CRUD를 배제하고, 결제 승인·취소 라이프사이클에서 발생하는 **초동시성 중복 요청, PG Timeout 미결 상태 격리, 복식부기 원장 정합성, Kafka 기반 트랜잭셔널 아웃박스 비동기 소비, 원장 대사 배치, k6 카오스 부하 검증**에 집중한 금융급 결제 코어 시스템입니다.
 
 ---
 
-## 🎯 핵심 질문 및 설계 목표 (Design Rationale)
+## 핵심 질문 및 설계 목표 (Design Rationale)
 
 1. **초동시성 멱등성 (Idempotency)**: 동일한 승인/취소 요청이 밀리초 단위로 수십 번 몰려도 외부 PG 호출과 내부 원장 반영은 정확히 1번만 일어나는가?
 2. **PG Timeout 미결 상태 격리 (`PENDING_CONFIRMATION`)**: 외부 PG 통신 실패/타임아웃을 단순 '실패'로 단정하지 않고 미결 상태로 격리하여 안전하게 수렴시키는가?
@@ -16,7 +16,7 @@
 
 ---
 
-## 🏗️ 멀티 모듈 아키텍처 (Multi-Module Architecture)
+## 멀티 모듈 아키텍처 (Multi-Module Architecture)
 
 ```text
 harness-payment-service/
@@ -30,7 +30,7 @@ harness-payment-service/
 
 ---
 
-## 🔄 핵심 라이프사이클 및 상태 전이 모델
+## 핵심 라이프사이클 및 상태 전이 모델
 
 ### 1. 결제 승인 수렴 모델
 - `READY` $\to$ `PENDING_CONFIRMATION` $\to$ `CONFIRMING` $\to$ `APPROVED` or `FAILED`
@@ -47,7 +47,7 @@ harness-payment-service/
 
 ---
 
-## ⚡ k6 부하 검증 및 카오스 엔지니어링 (8 Scenarios)
+## k6 부하 검증 및 카오스 엔지니어링 (8 Scenarios)
 
 `load-tests/k6/` 디렉토리에 고동시성 및 네트워크 장애 시뮬레이션 스크립트를 완비하여 시스템 한계를 정량 검증했습니다.
 
@@ -64,7 +64,7 @@ harness-payment-service/
 
 ---
 
-## 📚 기술 블로그 시리즈 (Engineering Deep Dive, 23편)
+## 기술 블로그 시리즈 (Engineering Deep Dive, 23편)
 
 설계 결정의 배경과 문제 해결 과정을 Velog에 연재하여 모든 아키텍처의 근거를 문서화했습니다.
 
@@ -95,7 +95,7 @@ harness-payment-service/
 
 ---
 
-## 🛠️ 기술 스택 (Tech Stack)
+## 기술 스택 (Tech Stack)
 
 - **언어 및 런타임**: Java 21 (Records, Pattern Matching, Sealed Types)
 - **프레임워크**: Spring Boot 3.5.x, Spring Data JPA
@@ -107,7 +107,7 @@ harness-payment-service/
 
 ---
 
-## 🚀 실행 및 검증 가이드
+## 실행 및 검증 가이드
 
 ### 1. 인프라 실행 (Docker Compose)
 
@@ -154,7 +154,7 @@ k6 run load-tests/k6/multi-instance-convergence.js
 
 ---
 
-## 📊 테스트 데이터 및 로컬 재현성 정책
+## 테스트 데이터 및 로컬 재현성 정책
 
 이 프로젝트는 반복 가능한 로컬/k6 검증 환경을 기준으로 합니다.
 
