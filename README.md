@@ -20,7 +20,7 @@
 
 ```text
 harness-payment-service/
-├── payment-service/          # [Core] 결제 승인/취소 API, 상태 머신, 복식부기 원장, 멱등 필터, Outbox 발행
+├── src/main/java/            # [Core] 결제 코어 (승인/취소 API, 상태 머신, 복식부기 원장, 멱등 필터, Outbox 발행)
 ├── mock-pg-server/           # [Mock PG] 네트워크 지연, Timeout, 간헐적 에러를 주입하는 가상 PG 서버
 ├── payment-event-consumer/   # [Kafka Consumer] Transactional Outbox 이벤트를 비동기 수신하여 멱등 처리
 ├── reconciliation-batch/     # [Batch] 외부 PG 거래내역과 내부 원장 간의 데이터 불일치를 감지·대사하는 배치
@@ -33,7 +33,7 @@ harness-payment-service/
 ## 핵심 라이프사이클 및 상태 전이 모델
 
 ### 1. 결제 승인 수렴 모델
-- `READY` $\to$ `PENDING_CONFIRMATION` $\to$ `CONFIRMING` $\to$ `APPROVED` or `FAILED`
+- `REQUESTED` $\to$ `PENDING_CONFIRMATION` $\to$ `CONFIRMING` $\to$ `APPROVED` or `FAILED`
 - PG 통신 중 타임아웃 발생 시 실패로 닫지 않고 `PENDING_CONFIRMATION` 상태로 격리.
 - 이후 스케줄러 또는 Confirm 재시도 요청이 `CONFIRMING` 락을 획득하여 PG 최종 결과를 조회한 뒤 안전하게 최종 상태로 수렴.
 
@@ -42,7 +42,7 @@ harness-payment-service/
 - **원자적 확정**: PG 성공 응답 수신 후, 결제 상태 갱신 + 차변/대변 원장 기록(`ledger_entries`) + 아웃박스 이벤트(`outbox_events`)를 **단일 DB 트랜잭션으로 원자적 커밋**.
 
 ### 3. 2단계 취소 예약 (Reservation-First Cancellation)
-- 취소 요청 시 `payment_cancellations`에 `RESERVED` 상태를 먼저 기록하여 잔여 취소 가능 한도를 즉시 차감(동시성 오버 리펀드 원천 차단).
+- 취소 요청 시 `payment_cancellations`에 `CANCELING` 상태를 먼저 기록하여 잔여 취소 가능 한도를 즉시 차감(동시성 오버 리펀드 원천 차단).
 - 외부 PG 취소 성공 확인 후 최종 원장 역분개 및 취소 확정.
 
 ---
@@ -64,7 +64,7 @@ harness-payment-service/
 
 ---
 
-## 기술 블로그 시리즈 (Engineering Deep Dive, 23편)
+## 기술 블로그 시리즈 (Engineering Deep Dive, 24편)
 
 설계 결정의 배경과 문제 해결 과정을 Velog에 연재하여 모든 아키텍처의 근거를 문서화했습니다.
 
@@ -129,7 +129,7 @@ Gradle wrapper가 포함되어 있으므로 별도 Gradle 설치 없이 전 모�
 # 1) 결제 코어 서비스 실행 (포트 8080)
 .\gradlew.bat bootRun
 
-# 2) 가상 Mock PG 서버 실행 (포트 8081)
+# 2) 가상 Mock PG 서버 실행 (포트 8090)
 .\gradlew.bat :mock-pg-server:bootRun
 
 # 3) Kafka 결제 이벤트 비동기 컨슈머 실행
